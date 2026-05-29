@@ -6,13 +6,27 @@ export default async function handler(req, res) {
   // In Next-on-Pages or local dev, process.env.CLOUDFLARE_KV may hold a JSON string with methods mocked.
   const KV = globalThis?.CLOUDFLARE_KV || process.env.CLOUDFLARE_KV
 
+  // Edge-compatible base64url decode
+  function base64UrlDecodeToJson(payload) {
+    try {
+      let str = payload.replace(/-/g, '+').replace(/_/g, '/')
+      while (str.length % 4) str += '='
+      // atob -> binary string; decode percent-encoding to get UTF-8
+      const binary = typeof atob === 'function' ? atob(str) : Buffer.from(str, 'base64').toString('binary')
+      const json = decodeURIComponent(Array.prototype.map.call(binary, c => '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2)).join(''))
+      return JSON.parse(json)
+    } catch (e) {
+      return null
+    }
+  }
+
   function tryDecodeJwtForEmail(token) {
     try {
       const parts = token.split('.')
       if (parts.length < 2) return null
       const payload = parts[1]
-      const json = JSON.parse(Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'))
-      return json.email || json?.user?.email || json?.email_address || null
+      const obj = base64UrlDecodeToJson(payload)
+      return obj?.email || obj?.user?.email || obj?.email_address || null
     } catch (e) {
       return null
     }
@@ -147,3 +161,6 @@ export default async function handler(req, res) {
   res.setHeader('Allow', 'GET,POST')
   res.status(405).end('Method Not Allowed')
 }
+
+// Ensure this API route is deployed to the Edge runtime so Cloudflare bindings and headers are available.
+export const runtime = 'edge'
