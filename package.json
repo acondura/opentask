@@ -1,0 +1,21 @@
+{
+  "name": "nextonpages",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "pages:build": "npx @cloudflare/next-on-pages@latest build .next --output ./cloudflare-pages",
+    "start": "next start",
+    "pages:deploy": "npx wrangler pages deploy ./cloudflare-pages",
+    "test": "echo \"No tests configured. Run npm run build && npm run pages:build to verify output.\""
+  },
+  "dependencies": {
+    "next": "13.x",
+    "react": "18.x",
+    "react-dom": "18.x"
+  },
+  "devDependencies": {
+    "@cloudflare/next-on-pages": "^1.13.16"
+  }
+}
