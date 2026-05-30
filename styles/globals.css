@@ -2,4 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
-body { @apply bg-gray-50 text-gray-900 }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
+
+:root{
+  --accent: #06b6d4; /* teal-400 */
+  --muted: #6b7280;
+}
+
+@layer base{
+  body{ font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; }
+  a{ color: var(--accent) }
+}
+
+/* subtle app background */
+body{ @apply bg-gradient-to-b from-slate-50 via-white to-slate-50 text-slate-900 }
+
+/* modern card */
+.card { @apply bg-white rounded-2xl shadow-md border border-slate-100 }
+.card-compact { @apply bg-white rounded-xl shadow-sm border border-slate-100 }
+
+/* pill input */
+.pill { @apply px-4 py-2 rounded-full border bg-white/90 shadow-sm }
+

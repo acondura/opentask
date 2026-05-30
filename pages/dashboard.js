@@ -95,19 +95,19 @@ export default function Dashboard(){
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {projects.map(proj=> (
-              <article key={proj.id} className="bg-white rounded-lg shadow p-6 border" onDragOver={(e)=>onDragOver(e,proj.id,null)} onDrop={(e)=>onDrop(e,proj.id,null)}>
+              <article key={proj.id} className="card p-6" onDragOver={(e)=>onDragOver(e,proj.id,null)} onDrop={(e)=>onDrop(e,proj.id,null)}>
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="text-xl font-semibold">{proj.title}</h3>
-                    <div className="mt-2 text-sm text-gray-500">{proj.tasks.length} tasks</div>
+                    <div className="mt-2 text-sm text-slate-500">{proj.tasks.length} tasks</div>
                   </div>
                   <div>
-                    <button onClick={()=>openAddTaskModal(proj.id)} className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-green-600 text-white hover:bg-green-700 shadow">+ Task</button>
+                    <button onClick={()=>openAddTaskModal(proj.id)} className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-gradient-to-r from-teal-400 to-cyan-500 text-white hover:from-teal-500 hover:to-cyan-600 shadow">+ Task</button>
                   </div>
                 </div>
 
-                <div className="mt-6">
-                  {proj.tasks.length? renderTasks(proj.id,proj.tasks) : <div className="text-sm text-gray-400 italic">No tasks — add one</div>}
+                <div className="mt-6 space-y-3">
+                  {proj.tasks.length? renderTasks(proj.id,proj.tasks) : <div className="text-sm text-slate-400 italic">No tasks — add one</div>}
                 </div>
               </article>
             ))}
