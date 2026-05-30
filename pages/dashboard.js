@@ -17,6 +17,7 @@ async function deleteTaskFromKV(projectId, id){ try{ await fetch('/api/kv',{meth
 export default function Dashboard(){
   const [projects,setProjects] = useState([])
   const [title,setTitle] = useState('')
+  const [selectedProjectId, setSelectedProjectId] = useState(null)
   const [modalOpen,setModalOpen] = useState(false)
   const [modalData,setModalData] = useState({projectId:null,parentId:null,name:'',file:null})
   const dragItem = useRef(null)
@@ -93,8 +94,20 @@ export default function Dashboard(){
             </div>
           </div>
 
+          {/* Project quick-list */}
+          <div className="mb-6">
+            <div className="flex flex-wrap gap-2">
+              <button onClick={()=>setSelectedProjectId(null)} className={`px-3 py-1 rounded-full ${selectedProjectId===null? 'bg-indigo-600 text-white':'bg-white border'}`}>All</button>
+              {projects.map(p=> (
+                <button key={p.id} onClick={()=>setSelectedProjectId(p.id)} className={`px-3 py-1 rounded-full ${selectedProjectId===p.id? 'bg-indigo-600 text-white':'bg-white border'}`}>
+                  {p.title}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {projects.map(proj=> (
+            {projects.filter(pr => !selectedProjectId || pr.id === selectedProjectId).map(proj=> (
               <article key={proj.id} className="card p-6" onDragOver={(e)=>onDragOver(e,proj.id,null)} onDrop={(e)=>onDrop(e,proj.id,null)}>
                 <div className="flex items-start justify-between">
                   <div>
