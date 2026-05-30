@@ -31,6 +31,21 @@ async function saveToKV(state) {
   } catch (e) { }
 }
 
+// Incremental KV helpers (per-task)
+async function saveTaskToKV(task, projectId) {
+  try {
+    const payload = { id: task.id, name: task.name, parentId: task.parentId || null, projectId, childrenIds: (task.children||[]).map(c=>c.id) }
+    await fetch('/api/kv', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: payload }) })
+  } catch (e) { console.error('saveTaskToKV', e) }
+}
+
+async function deleteTaskFromKV(projectId, taskId) {
+  try {
+    await fetch('/api/kv', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, id: taskId }) })
+  } catch (e) { console.error('deleteTaskFromKV', e) }
+}
+
+
 export default function Dashboard() {
   const [projects, setProjects] = useState([])
   const [title, setTitle] = useState('')
@@ -67,6 +82,7 @@ export default function Dashboard() {
     setProjects(p => {
       const next = [{ id: uid(), title: title.trim(), tasks: [] }, ...p]
       saveState(next)
+      // keep bulk save for projects list, but tasks are saved individually
       saveToKV(next)
       return next
     })
@@ -95,9 +111,10 @@ export default function Dashboard() {
         const parent = findTaskById(proj.tasks, parentId)
         parent.children.unshift(newTask)
       }
-      // persist
+      // persist locally
       saveState(cp)
-      saveToKV(cp)
+      // persist task incrementally
+      saveTaskToKV(newTask, projectId)
       return cp
     })
 
@@ -186,9 +203,13 @@ export default function Dashboard() {
       if (!removed) return cp
       // insert task according to dest
       proj.tasks = insertTaskAt(proj.tasks, dest.overTaskId, dest.position, removed)
-      // persist after reorder
+      // persist after reorder locally
       saveState(cp)
-      saveToKV(cp)
+      // persist moved task incrementally (we moved `removed` under dest.overTaskId or top)
+      // update removed.parentId according to dest
+      const updated = removed
+      updated.parentId = dest.overTaskId || null
+      saveTaskToKV(updated, proj.id)
       return cp
     })
 
