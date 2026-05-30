@@ -68,49 +68,77 @@ export default function Dashboard(){
   return (
     <>
       <Head />
-      <main className="font-sans p-6">
-        <h1 className="text-4xl font-bold mb-6">Dashboard</h1>
-        <section className="mb-6 flex gap-2">
-          <input className="border p-2 rounded" value={title} onChange={(e)=>setTitle(e.target.value)} placeholder="New project title" />
-          <button onClick={addProject} className="bg-blue-600 text-white px-3 rounded">Add Project</button>
-        </section>
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {projects.map(proj=> (
-            <div key={proj.id} className="border border-gray-300 p-4 bg-gray-50 rounded" onDragOver={(e)=>onDragOver(e,proj.id,null)} onDrop={(e)=>onDrop(e,proj.id,null)}>
-              <h3 className="text-xl font-semibold mb-3">{proj.title}</h3>
-              <div className="mb-3">
-                <button onClick={()=>openAddTaskModal(proj.id)} className="px-2 py-1 bg-green-500 text-white rounded">Add Task</button>
-              </div>
-              <div>
-                {proj.tasks.length? renderTasks(proj.id,proj.tasks) : <em className="text-gray-500 italic">No tasks</em>}
-              </div>
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+        <header className="bg-white border-b">
+          <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <h1 className="text-2xl font-extrabold tracking-tight">OpenTask</h1>
+              <p className="text-sm text-gray-500">Lightweight project & task manager</p>
             </div>
-          ))}
-        </section>
-
-        {modalOpen && (
-          <div className="fixed inset-0 flex items-center justify-center bg-black/50">
-            <div className="bg-white p-6 rounded shadow w-full max-w-xl">
-              <h3 className="text-xl mb-4">New Task</h3>
-              <div className="mb-4">
-                <label className="block mb-2">Task name</label>
-                <input className="w-full border p-2 rounded" value={modalData.name} onChange={(e)=>setModalData(d=>({...d,name:e.target.value}))} />
-              </div>
-              <div className="mb-4">
-                <label className="block mb-2">Attach file (optional)</label>
-                <input type="file" onChange={(e)=>setModalData(d=>({...d,file: e.target.files?.[0]}))} />
-              </div>
-              <div className="flex justify-end gap-2">
-                <button onClick={()=>setModalOpen(false)} className="px-3 py-1">Cancel</button>
-                <button onClick={submitModal} className="px-3 py-1 bg-blue-600 text-white rounded">Add task</button>
-              </div>
+            <div className="flex items-center gap-3">
+              <button className="text-sm px-3 py-1 bg-indigo-50 text-indigo-700 rounded">New project</button>
             </div>
           </div>
-        )}
+        </header>
 
-        <hr className="mt-6" />
-        <p className="text-sm text-gray-600 mt-6">Drag a task and drop it onto another task to make it a child, or drop it into the project area to make it top-level.</p>
-      </main>
+        <main className="max-w-7xl mx-auto px-6 py-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-3xl font-bold">Dashboard</h2>
+              <p className="text-sm text-gray-500">Create projects, add tasks and organize them hierarchically.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <input className="border rounded p-2 shadow-sm" value={title} onChange={(e)=>setTitle(e.target.value)} placeholder="New project title" />
+              <button onClick={addProject} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md shadow">Add Project</button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {projects.map(proj=> (
+              <article key={proj.id} className="bg-white rounded-lg shadow p-6 border" onDragOver={(e)=>onDragOver(e,proj.id,null)} onDrop={(e)=>onDrop(e,proj.id,null)}>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="text-xl font-semibold">{proj.title}</h3>
+                    <div className="mt-2 text-sm text-gray-500">{proj.tasks.length} tasks</div>
+                  </div>
+                  <div>
+                    <button onClick={()=>openAddTaskModal(proj.id)} className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-green-600 text-white hover:bg-green-700 shadow">+ Task</button>
+                  </div>
+                </div>
+
+                <div className="mt-6">
+                  {proj.tasks.length? renderTasks(proj.id,proj.tasks) : <div className="text-sm text-gray-400 italic">No tasks — add one</div>}
+                </div>
+              </article>
+            ))}
+          </div>
+
+          {modalOpen && (
+            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+              <div className="bg-white w-full max-w-lg rounded-lg shadow-lg p-6">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-lg font-semibold">New Task</h4>
+                  <button onClick={()=>setModalOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+                </div>
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Task name</label>
+                    <input className="mt-1 block w-full border rounded p-2" value={modalData.name} onChange={(e)=>setModalData(d=>({...d,name:e.target.value}))} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Attach file</label>
+                    <input type="file" className="mt-1" onChange={(e)=>setModalData(d=>({...d,file: e.target.files?.[0]}))} />
+                  </div>
+                </div>
+                <div className="mt-6 flex justify-end gap-3">
+                  <button onClick={()=>setModalOpen(false)} className="px-4 py-2 rounded border">Cancel</button>
+                  <button onClick={submitModal} className="px-4 py-2 rounded bg-indigo-600 text-white">Add Task</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
     </>
   )
 }
