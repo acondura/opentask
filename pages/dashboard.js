@@ -1,344 +1,115 @@
 import Head from 'next/head'
 import { useEffect, useState, useRef } from 'react'
 
-// Minimal in-browser persistence key
 const STORAGE_KEY = 'opentask.v1'
 
-function uid() {
-  return Math.random().toString(36).slice(2, 9)
-}
+function uid() { return Math.random().toString(36).slice(2,9) }
 
-function saveState(state) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)) } catch (e) { }
-}
+function saveState(state){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)) }catch(e){} }
+function loadState(){ try{ return JSON.parse(localStorage.getItem(STORAGE_KEY)) || null }catch(e){ return null }}
 
-function loadState() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || null } catch (e) { return null }
-}
+async function loadFromKV(){ try{ const r = await fetch('/api/kv'); if(!r.ok) return null; return await r.json() }catch(e){return null} }
+async function saveToKV(state){ try{ await fetch('/api/kv',{method:'POST',headers:{'Content-Type':'application/json'},body: JSON.stringify({data:state})}) }catch(e){} }
 
-async function loadFromKV() {
-  try {
-    const res = await fetch('/api/kv')
-    if (!res.ok) return null
-    const data = await res.json()
-    return data
-  } catch (e) { return null }
-}
+async function saveTaskToKV(task, projectId){ try{ const payload = {id:task.id,name:task.name,parentId:task.parentId||null,projectId,childrenIds:(task.children||[]).map(c=>c.id)}; await fetch('/api/kv',{method:'POST',headers:{'Content-Type':'application/json'},body: JSON.stringify({data:payload})}) }catch(e){console.error(e)} }
+async function deleteTaskFromKV(projectId, id){ try{ await fetch('/api/kv',{method:'DELETE',headers:{'Content-Type':'application/json'},body: JSON.stringify({projectId,id})}) }catch(e){console.error(e)} }
 
-async function saveToKV(state) {
-  try {
-    await fetch('/api/kv', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: state }) })
-  } catch (e) { }
-}
-
-// Incremental KV helpers (per-task)
-async function saveTaskToKV(task, projectId) {
-  try {
-    const payload = { id: task.id, name: task.name, parentId: task.parentId || null, projectId, childrenIds: (task.children||[]).map(c=>c.id) }
-    await fetch('/api/kv', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: payload }) })
-  } catch (e) { console.error('saveTaskToKV', e) }
-}
-
-async function deleteTaskFromKV(projectId, taskId) {
-  try {
-    await fetch('/api/kv', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, id: taskId }) })
-  } catch (e) { console.error('deleteTaskFromKV', e) }
-}
-
-
-export default function Dashboard() {
-  const [projects, setProjects] = useState([])
-  const [title, setTitle] = useState('')
-  const [modalOpen, setModalOpen] = useState(false)
-  const [modalData, setModalData] = useState({ projectId: null, parentId: null, name: '', file: null })
-
-  // drag state
+export default function Dashboard(){
+  const [projects,setProjects] = useState([])
+  const [title,setTitle] = useState('')
+  const [modalOpen,setModalOpen] = useState(false)
+  const [modalData,setModalData] = useState({projectId:null,parentId:null,name:'',file:null})
   const dragItem = useRef(null)
   const dragOverItem = useRef(null)
 
-  useEffect(() => {
-    async function init() {
-      const saved = loadState()
-      if (saved) setProjects(saved)
-      // try to fetch from KV and merge/overwrite if exists
-      const kv = await loadFromKV()
-      if (kv && Array.isArray(kv) && kv.length) {
-        setProjects(kv)
-        saveState(kv)
-      }
-    }
-    init()
-  }, [])
+  useEffect(()=>{ (async()=>{ const s = loadState(); if(s) setProjects(s); const kv = await loadFromKV(); if(kv && Array.isArray(kv) && kv.length){ setProjects(kv); saveState(kv) } })() },[])
 
-  useEffect(() => { saveState(projects) }, [projects])
-  useEffect(() => {
-    // whenever projects change, try to also save to KV (best-effort)
-    // include owner query param when running locally for testing: ?owner=email@example.com
-    saveToKV(projects)
-  }, [projects])
+  useEffect(()=>{ saveState(projects) },[projects])
 
-  function addProject() {
-    if (!title.trim()) return
-    setProjects(p => {
-      const next = [{ id: uid(), title: title.trim(), tasks: [] }, ...p]
-      saveState(next)
-      // keep bulk save for projects list, but tasks are saved individually
-      saveToKV(next)
-      return next
-    })
-    setTitle('')
-  }
+  function addProject(){ if(!title.trim()) return; setProjects(p=>{ const next=[{id:uid(),title:title.trim(),tasks:[]} , ...p]; saveState(next); saveToKV(next); return next }); setTitle('') }
 
-  function openAddTaskModal(projectId, parentId = null) {
-    setModalData({ projectId, parentId, name: '', file: null })
-    setModalOpen(true)
-  }
+  function openAddTaskModal(projectId,parentId=null){ setModalData({projectId,parentId,name:'',file:null}); setModalOpen(true) }
 
-  async function submitModal() {
-    const { projectId, parentId, name, file } = modalData
-    if (!name || !projectId) return
+  async function submitModal(){ const {projectId,parentId,name,file} = modalData; if(!name||!projectId) return; const newTaskId = uid(); setProjects(prev=>{ const cp = JSON.parse(JSON.stringify(prev)); const proj = cp.find(x=>x.id===projectId); const newTask={id:newTaskId,name,children:[]}; if(!parentId) proj.tasks.unshift(newTask); else{ const parent = findTaskById(proj.tasks,parentId); parent.children.unshift(newTask) } saveState(cp); saveTaskToKV(newTask,projectId); return cp }); if(file){ try{ const b64 = await toBase64(file); await fetch('/api/upload',{method:'POST',headers:{'Content-Type':'application/json'},body: JSON.stringify({projectId,taskId:newTaskId,filename:file.name,contentBase64:b64})}) }catch(e){console.error(e)} } setModalOpen(false) }
 
-    // generate task id so we can immediately upload file against it
-    const newTaskId = uid()
+  function toBase64(file){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result.split(',')[1]); r.onerror=rej; r.readAsDataURL(file) }) }
 
-    // create task (synchronously prepare next state)
-    setProjects(prev => {
-      const cp = JSON.parse(JSON.stringify(prev))
-      const proj = cp.find(x => x.id === projectId)
-      const newTask = { id: newTaskId, name, children: [] }
-      if (!parentId) proj.tasks.unshift(newTask)
-      else {
-        const parent = findTaskById(proj.tasks, parentId)
-        parent.children.unshift(newTask)
-      }
-      // persist locally
-      saveState(cp)
-      // persist task incrementally
-      saveTaskToKV(newTask, projectId)
-      return cp
-    })
+  function findTaskById(tasks,id){ for(const t of tasks){ if(t.id===id) return t; const f=findTaskById(t.children||[],id); if(f) return f } return null }
 
-    // upload file to R2 if present, using the generated task id
-    if (file) {
-      try {
-        const b64 = await toBase64(file)
-        await fetch('/api/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, taskId: newTaskId, filename: file.name, contentBase64: b64 }) })
-      } catch (e) { console.error('upload failed', e) }
-    }
+  function removeTask(projectId,taskId){ setProjects(prev=>{ const cp=JSON.parse(JSON.stringify(prev)); const proj = cp.find(x=>x.id===projectId); const [newTasks,removed]=removeTaskById(proj.tasks,taskId); proj.tasks=newTasks; saveState(cp); if(removed){ const ids=gatherIds(removed); ids.forEach(id=>deleteTaskFromKV(projectId,id)) } return cp }) }
 
-    setModalOpen(false)
-  }
+  function removeTaskById(list,id){ for(let i=0;i<list.length;i++){ if(list[i].id===id){ const rem=list[i]; const newList=[...list.slice(0,i),...list.slice(i+1)]; return [newList,rem] } if(list[i].children && list[i].children.length){ const [nc,removed]=removeTaskById(list[i].children,id); if(removed){ const newItem = {...list[i], children: nc}; return [[...list.slice(0,i), newItem, ...list.slice(i+1)], removed] } } } return [list,null] }
 
-  function toBase64(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result.split(',')[1])
-      reader.onerror = reject
-      reader.readAsDataURL(file)
-    })
-  }
+  function gatherIds(node){ const ids=[node.id]; if(node.children) for(const c of node.children) ids.push(...gatherIds(c)); return ids }
 
-  function findTaskById(tasks, id) {
-    for (const t of tasks) {
-      if (t.id === id) return t
-      const found = findTaskById(t.children || [], id)
-      if (found) return found
-    }
-    return null
-  }
+  function insertTaskAt(list,targetId,position,task){ if(!targetId){ if(position==='after') return [...list,task]; return [task,...list] } for(let i=0;i<list.length;i++){ if(list[i].id===targetId){ if(position==='inside'){ const children = list[i].children ? [task,...list[i].children] : [task]; const n={...list[i],children}; return [...list.slice(0,i),n,...list.slice(i+1)] } if(position==='before') return [...list.slice(0,i),task,...list.slice(i)]; return [...list.slice(0,i+1),task,...list.slice(i+1)] } if(list[i].children && list[i].children.length){ const newChildren = insertTaskAt(list[i].children,targetId,position,task); if(newChildren !== list[i].children){ const n={...list[i], children:newChildren}; return [...list.slice(0,i), n, ...list.slice(i+1)] } } } return list }
 
-  // Remove task
-  function removeTask(projectId, taskId) {
-    setProjects(prev => {
-      const cp = JSON.parse(JSON.stringify(prev))
-      const proj = cp.find(x => x.id === projectId)
-      proj.tasks = removeById(proj.tasks, taskId)
-      saveState(cp)
-      saveToKV(cp)
-      return cp
-    })
-  }
+  function onDragStart(e,projectId,taskId){ dragItem.current={projectId,taskId}; e.dataTransfer.setData('text/plain',JSON.stringify(dragItem.current)); e.dataTransfer.effectAllowed='move' }
+  function onDragOver(e,projectId,overTaskId=null){ e.preventDefault(); let pos='inside'; try{ const t=e.currentTarget; const r=t.getBoundingClientRect(); const rel=(e.clientY-r.top)/r.height; if(rel<=0.25) pos='before'; else if(rel>=0.75) pos='after'; else pos='inside' }catch(e){pos='inside'} dragOverItem.current={projectId,overTaskId,position:pos} }
+  function onDrop(e,projectId,overTaskId=null){ e.preventDefault(); const src=dragItem.current; const dest = dragOverItem.current || {projectId,overTaskId,position: overTaskId? 'inside':'start'}; if(!src) return; if(src.projectId!==dest.projectId) return; setProjects(prev=>{ const cp=JSON.parse(JSON.stringify(prev)); const proj=cp.find(x=>x.id===src.projectId); const [newTasks,removed]=removeTaskById(proj.tasks,src.taskId); proj.tasks=newTasks; if(!removed) return cp; proj.tasks = insertTaskAt(proj.tasks,dest.overTaskId,dest.position,removed); saveState(cp); const updated = removed; updated.parentId = dest.overTaskId || null; saveTaskToKV(updated,proj.id); return cp }) ; dragItem.current=null; dragOverItem.current=null }
 
-  function removeById(list, id) {
-    return list.filter(x => x.id !== id).map(x => ({ ...x, children: removeById(x.children || [], id) }))
-  }
-
-  // Drag handlers for tasks (supports hierarchical drop)
-  function onDragStart(e, projectId, taskId) {
-    dragItem.current = { projectId, taskId }
-    e.dataTransfer.setData('text/plain', JSON.stringify(dragItem.current))
-    e.dataTransfer.effectAllowed = 'move'
-  }
-
-  function onDragOver(e, projectId, overTaskId = null) {
-    e.preventDefault()
-    // compute drop position relative to target element (before/after/inside)
-    let position = 'inside'
-    try {
-      const target = e.currentTarget
-      const rect = target.getBoundingClientRect()
-      const rel = (e.clientY - rect.top) / rect.height
-      if (rel <= 0.25) position = 'before'
-      else if (rel >= 0.75) position = 'after'
-      else position = 'inside'
-    } catch (e) {
-      position = 'inside'
-    }
-    dragOverItem.current = { projectId, overTaskId, position }
-  }
-
-  function onDrop(e, projectId, overTaskId = null) {
-    e.preventDefault()
-    const src = dragItem.current
-    const dest = dragOverItem.current || { projectId, overTaskId, position: overTaskId ? 'inside' : 'start' }
-    if (!src) return
-    if (src.projectId !== dest.projectId) return
-
-    setProjects(prev => {
-      const cp = JSON.parse(JSON.stringify(prev))
-      const proj = cp.find(x => x.id === src.projectId)
-      // remove task from tree
-      const [newTasks, removed] = removeTaskById(proj.tasks, src.taskId)
-      proj.tasks = newTasks
-      if (!removed) return cp
-      // insert task according to dest
-      proj.tasks = insertTaskAt(proj.tasks, dest.overTaskId, dest.position, removed)
-      // persist after reorder locally
-      saveState(cp)
-      // persist moved task incrementally (we moved `removed` under dest.overTaskId or top)
-      // update removed.parentId according to dest
-      const updated = removed
-      updated.parentId = dest.overTaskId || null
-      saveTaskToKV(updated, proj.id)
-      return cp
-    })
-
-    dragItem.current = null
-    dragOverItem.current = null
-  }
-
-  function removeTaskById(list, id) {
-    for (let i = 0; i < list.length; i++) {
-      if (list[i].id === id) {
-        const removed = list[i]
-        const newList = [...list.slice(0, i), ...list.slice(i + 1)]
-        return [newList, removed]
-      }
-      if (list[i].children && list[i].children.length) {
-        const [newChildren, removed] = removeTaskById(list[i].children, id)
-        if (removed) {
-          const newItem = { ...list[i], children: newChildren }
-          const newList = [...list.slice(0, i), newItem, ...list.slice(i + 1)]
-          return [newList, removed]
-        }
-      }
-    }
-    return [list, null]
-  }
-
-  function insertTaskAt(list, targetId, position, task) {
-    if (!targetId) {
-      // drop into project area: position 'start' or 'end' -> default to start
-      if (position === 'after') return [...list, task]
-      return [task, ...list]
-    }
-    for (let i = 0; i < list.length; i++) {
-      if (list[i].id === targetId) {
-        if (position === 'inside') {
-          const children = list[i].children ? [task, ...list[i].children] : [task]
-          const newItem = { ...list[i], children }
-          return [...list.slice(0, i), newItem, ...list.slice(i + 1)]
-        }
-        if (position === 'before') {
-          return [...list.slice(0, i), task, ...list.slice(i)]
-        }
-        // after
-        return [...list.slice(0, i + 1), task, ...list.slice(i + 1)]
-      }
-      if (list[i].children && list[i].children.length) {
-        const newChildren = insertTaskAt(list[i].children, targetId, position, task)
-        // if insertion happened (detect by reference change)
-        if (newChildren !== list[i].children) {
-          const newItem = { ...list[i], children: newChildren }
-          return [...list.slice(0, i), newItem, ...list.slice(i + 1)]
-        }
-      }
-    }
-    return list
-  }
-
-  function renderTasks(projectId, tasks, depth = 0) {
-    return (
-      <ul style={{ listStyle: 'none', paddingLeft: depth ? 16 : 0 }}>
-        {tasks.map(t => (
-          <li key={t.id} style={{ border: '1px solid #ddd', padding: 8, marginBottom: 8, background: '#fff' }} draggable
-            onDragStart={(e) => onDragStart(e, projectId, t.id)}
-            onDragOver={(e) => onDragOver(e, projectId, t.id)}
-            onDrop={(e) => onDrop(e, projectId, t.id)}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <strong>{t.name}</strong>
-              </div>
-              <div>
-                <button onClick={() => addTask(projectId, t.id)}>+Sub</button>{' '}
-                <button onClick={() => removeTask(projectId, t.id)}>Del</button>
-              </div>
+  function renderTasks(projectId,tasks,depth=0){ return (
+    <ul className={`space-y-2 ${depth ? 'pl-4' : ''}`}>
+      {tasks.map(t=> (
+        <li key={t.id} className="border border-gray-200 p-2 bg-white rounded" draggable onDragStart={(e)=>onDragStart(e,projectId,t.id)} onDragOver={(e)=>onDragOver(e,projectId,t.id)} onDrop={(e)=>onDrop(e,projectId,t.id)}>
+          <div className="flex justify-between items-center">
+            <div className="font-medium">{t.name}</div>
+            <div className="flex gap-2">
+              <button className="text-sm px-2 py-1 bg-gray-100 rounded" onClick={()=>openAddTaskModal(projectId,t.id)}>+Sub</button>
+              <button className="text-sm px-2 py-1 bg-red-100 rounded" onClick={()=>removeTask(projectId,t.id)}>Del</button>
             </div>
-            {t.children && t.children.length > 0 && renderTasks(projectId, t.children, depth + 1)}
-          </li>
-        ))}
-      </ul>
-    )
-  }
+          </div>
+          {t.children && t.children.length>0 && renderTasks(projectId,t.children,depth+1)}
+        </li>
+      ))}
+    </ul>
+  ) }
 
   return (
     <>
-      <Head>
-        <title>OpenTask — Dashboard</title>
-      </Head>
-      <main style={{ fontFamily: 'system-ui, sans-serif', padding: 24 }}>
-        <h1>Dashboard</h1>
-        <section style={{ marginBottom: 24 }}>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="New project title" />{' '}
-          <button onClick={addProject}>Add Project</button>
+      <Head />
+      <main className="font-sans p-6">
+        <h1 className="text-4xl font-bold mb-6">Dashboard</h1>
+        <section className="mb-6 flex gap-2">
+          <input className="border p-2 rounded" value={title} onChange={(e)=>setTitle(e.target.value)} placeholder="New project title" />
+          <button onClick={addProject} className="bg-blue-600 text-white px-3 rounded">Add Project</button>
         </section>
-
-        <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          {projects.map(proj => (
-            <div key={proj.id} style={{ border: '1px solid #ccc', padding: 12, background: '#f9f9f9' }}
-              onDragOver={(e) => onDragOver(e, proj.id, null)}
-              onDrop={(e) => onDrop(e, proj.id, null)}>
-              <h3>{proj.title}</h3>
-              <div style={{ marginBottom: 8 }}>
-                <button onClick={() => openAddTaskModal(proj.id)}>Add Task</button>
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {projects.map(proj=> (
+            <div key={proj.id} className="border border-gray-300 p-4 bg-gray-50 rounded" onDragOver={(e)=>onDragOver(e,proj.id,null)} onDrop={(e)=>onDrop(e,proj.id,null)}>
+              <h3 className="text-xl font-semibold mb-3">{proj.title}</h3>
+              <div className="mb-3">
+                <button onClick={()=>openAddTaskModal(proj.id)} className="px-2 py-1 bg-green-500 text-white rounded">Add Task</button>
               </div>
               <div>
-                {proj.tasks.length ? renderTasks(proj.id, proj.tasks) : <em>No tasks</em>}
+                {proj.tasks.length? renderTasks(proj.id,proj.tasks) : <em className="text-gray-500 italic">No tasks</em>}
               </div>
             </div>
           ))}
         </section>
+
         {modalOpen && (
-          <div style={{position:'fixed', inset:0, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,0.5)'}}>
-            <div style={{background:'#fff', padding:20, borderRadius:8, width:'min(720px,90%)'}}>
-              <h3 style={{marginTop:0}}>New Task</h3>
-              <div style={{marginBottom:12}}>
-                <label style={{display:'block', marginBottom:6}}>Task name</label>
-                <input style={{width:'100%', padding:8, borderRadius:4, border:'1px solid #ccc'}} value={modalData.name} onChange={(e)=>setModalData(d=>({...d, name:e.target.value}))} />
+          <div className="fixed inset-0 flex items-center justify-center bg-black/50">
+            <div className="bg-white p-6 rounded shadow w-full max-w-xl">
+              <h3 className="text-xl mb-4">New Task</h3>
+              <div className="mb-4">
+                <label className="block mb-2">Task name</label>
+                <input className="w-full border p-2 rounded" value={modalData.name} onChange={(e)=>setModalData(d=>({...d,name:e.target.value}))} />
               </div>
-              <div style={{marginBottom:12}}>
-                <label style={{display:'block', marginBottom:6}}>Attach file (optional)</label>
-                <input type="file" onChange={(e)=>setModalData(d=>({...d, file: e.target.files?.[0] }))} />
+              <div className="mb-4">
+                <label className="block mb-2">Attach file (optional)</label>
+                <input type="file" onChange={(e)=>setModalData(d=>({...d,file: e.target.files?.[0]}))} />
               </div>
-              <div style={{display:'flex', justifyContent:'flex-end', gap:8}}>
-                <button onClick={()=>setModalOpen(false)} style={{padding:'8px 12px'}}>Cancel</button>
-                <button onClick={submitModal} style={{padding:'8px 12px', background:'#0b74de', color:'#fff', border:'none', borderRadius:4}}>Add task</button>
+              <div className="flex justify-end gap-2">
+                <button onClick={()=>setModalOpen(false)} className="px-3 py-1">Cancel</button>
+                <button onClick={submitModal} className="px-3 py-1 bg-blue-600 text-white rounded">Add task</button>
               </div>
             </div>
           </div>
         )}
-        <hr style={{ marginTop: 24 }} />
-        <p style={{ fontSize: 12, color: '#666' }}>Drag a task and drop it onto another task to make it a child, or drop it into the project area to make it top-level.</p>
+
+        <hr className="mt-6" />
+        <p className="text-sm text-gray-600 mt-6">Drag a task and drop it onto another task to make it a child, or drop it into the project area to make it top-level.</p>
       </main>
     </>
   )
