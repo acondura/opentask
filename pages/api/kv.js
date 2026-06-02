@@ -130,10 +130,18 @@ export default async function handler(req, res) {
           function walk(task, parentId = null) {
             const key = `${PREFIX}${projectId}:task:${task.id}`
             desiredKeys.add(key)
-            const value = { id: task.id, name: task.name || task.title || '', parentId, projectId, childrenIds: (task.children || []).map(c => c.id) }
+            const { children, ...rest } = task
+            const value = {
+              ...rest,
+              id: task.id,
+              name: task.name || task.title || '',
+              parentId,
+              projectId,
+              childrenIds: (children || []).map(c => c.id)
+            }
             // store
             KV.put(key, JSON.stringify(value))
-              ; (task.children || []).forEach(child => walk(child, task.id))
+            ; (children || []).forEach(child => walk(child, task.id))
           }
           ; (proj.tasks || []).forEach(t => walk(t, null))
         }
@@ -159,7 +167,25 @@ export default async function handler(req, res) {
     }
   }
 
-  res.setHeader('Allow', 'GET,POST')
+  if (req.method === 'DELETE') {
+    try {
+      const body = req.body || {}
+      const { projectId, id } = body
+      if (!projectId || !id) {
+        return res.status(400).json({ error: 'Missing projectId or id' })
+      }
+      if (KV && KV.delete) {
+        const key = `${PREFIX}${projectId}:task:${id}`
+        await KV.delete(key)
+        return res.status(200).json({ ok: true })
+      }
+      return res.status(200).json({ ok: false, reason: 'KV not bound' })
+    } catch (e) {
+      return res.status(500).json({ error: String(e) })
+    }
+  }
+
+  res.setHeader('Allow', 'GET,POST,DELETE')
   res.status(405).end('Method Not Allowed')
 }
 
