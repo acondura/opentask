@@ -4,3 +4,4 @@ cloudflare-pages
 wrangler.toml
 dist
 *.log
+.vercel

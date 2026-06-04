@@ -1,7 +1,7 @@
 // Simple API route to proxy saves/loads to Cloudflare KV.
 // This endpoint expects to run on an environment that binds CLOUDFLARE_KV to a KV namespace.
 
-export default async function handler(req, res) {
+export default async function handler(req) {
   // Bindings: In Cloudflare Pages/Workers, bind your KV namespace to the name CLOUDFLARE_KV
   // In Next-on-Pages or local dev, process.env.CLOUDFLARE_KV may hold a JSON string with methods mocked.
   // Prefer the binding name 'opentask' if you bound KV to that variable in Pages.
@@ -33,28 +33,45 @@ export default async function handler(req, res) {
     }
   }
 
+  function getHeader(req, name) {
+    if (!req.headers) return null
+    if (typeof req.headers.get === 'function') {
+      return req.headers.get(name)
+    }
+    return req.headers[name] || req.headers[name.toLowerCase()]
+  }
+
   function ownerFromReq(req) {
-    const h = req.headers || {}
-    // common Access headers
     const candidates = [
-      h['cf-access-authenticated-user-email'],
-      h['x-authenticated-user-email'],
-      h['x-forwarded-user-email'],
-      h['email'],
-      h['x-user-email']
+      'cf-access-authenticated-user-email',
+      'x-authenticated-user-email',
+      'x-forwarded-user-email',
+      'email',
+      'x-user-email'
     ]
-    for (const c of candidates) if (c) return Array.isArray(c) ? c[0] : c
+    for (const name of candidates) {
+      const val = getHeader(req, name)
+      if (val) return Array.isArray(val) ? val[0] : val
+    }
     // try JWT headers
-    const jwt = h['cf-access-jwt-assertion'] || h['cf-access-jwt'] || h['x-forwarded-jwt'] || h['authorization']
-    if (jwt) {
-      // strip 'Bearer '
-      const tok = Array.isArray(jwt) ? jwt[0] : jwt
-      const maybe = tok.replace(/^Bearer\s+/i, '')
-      const email = tryDecodeJwtForEmail(maybe)
-      if (email) return email
+    const jwtNames = ['cf-access-jwt-assertion', 'cf-access-jwt', 'x-forwarded-jwt', 'authorization']
+    for (const name of jwtNames) {
+      const jwt = getHeader(req, name)
+      if (jwt) {
+        const tok = Array.isArray(jwt) ? jwt[0] : jwt
+        const maybe = tok.replace(/^Bearer\s+/i, '')
+        const email = tryDecodeJwtForEmail(maybe)
+        if (email) return email
+      }
     }
     // fallback to query param for local testing
-    if (req.query && req.query.owner) return req.query.owner
+    if (req.url) {
+      try {
+        const url = new URL(req.url, 'http://localhost')
+        const ownerParam = url.searchParams.get('owner')
+        if (ownerParam) return ownerParam
+      } catch (e) { }
+    }
     return null
   }
 
@@ -109,17 +126,24 @@ export default async function handler(req, res) {
         }
 
         const projects = Object.values(projectsMap)
-        return res.status(200).json(projects)
+        return new Response(JSON.stringify(projects), { status: 200, headers: { 'Content-Type': 'application/json' } })
       }
-      return res.status(200).json(null)
+      return new Response(JSON.stringify(null), { status: 200, headers: { 'Content-Type': 'application/json' } })
     } catch (e) {
-      return res.status(500).json({ error: String(e) })
+      return new Response(JSON.stringify({ error: String(e) }), { status: 500, headers: { 'Content-Type': 'application/json' } })
     }
   }
 
   if (req.method === 'POST') {
     try {
-      const body = req.body || {}
+      let body = {}
+      try {
+        if (typeof req.json === 'function') {
+          body = await req.json()
+        } else if (req.body) {
+          body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
+        }
+      } catch (err) {}
       const data = body.data || null
       // If client posts full projects array (data), we'll upsert per-task keys and remove stale keys
       if (Array.isArray(data) && KV && KV.put && KV.list && KV.get && KV.delete) {
@@ -153,40 +177,49 @@ export default async function handler(req, res) {
           if (!desiredKeys.has(k.name)) deletes.push(KV.delete(k.name))
         }
         await Promise.all(deletes)
-        return res.status(200).json({ ok: true })
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
       }
       // fallback: single-task upsert
       if (data && data.id && data.projectId && KV && KV.put) {
         const key = `${PREFIX}${data.projectId}:task:${data.id}`
         await KV.put(key, JSON.stringify(data))
-        return res.status(200).json({ ok: true })
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
       }
-      return res.status(200).json({ ok: false, reason: 'KV not bound or invalid payload' })
+      return new Response(JSON.stringify({ ok: false, reason: 'KV not bound or invalid payload' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     } catch (e) {
-      return res.status(500).json({ error: String(e) })
+      return new Response(JSON.stringify({ error: String(e) }), { status: 500, headers: { 'Content-Type': 'application/json' } })
     }
   }
 
   if (req.method === 'DELETE') {
     try {
-      const body = req.body || {}
+      let body = {}
+      try {
+        if (typeof req.json === 'function') {
+          body = await req.json()
+        } else if (req.body) {
+          body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
+        }
+      } catch (err) {}
       const { projectId, id } = body
       if (!projectId || !id) {
-        return res.status(400).json({ error: 'Missing projectId or id' })
+        return new Response(JSON.stringify({ error: 'Missing projectId or id' }), { status: 400, headers: { 'Content-Type': 'application/json' } })
       }
       if (KV && KV.delete) {
         const key = `${PREFIX}${projectId}:task:${id}`
         await KV.delete(key)
-        return res.status(200).json({ ok: true })
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
       }
-      return res.status(200).json({ ok: false, reason: 'KV not bound' })
+      return new Response(JSON.stringify({ ok: false, reason: 'KV not bound' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     } catch (e) {
-      return res.status(500).json({ error: String(e) })
+      return new Response(JSON.stringify({ error: String(e) }), { status: 500, headers: { 'Content-Type': 'application/json' } })
     }
   }
 
-  res.setHeader('Allow', 'GET,POST,DELETE')
-  res.status(405).end('Method Not Allowed')
+  return new Response('Method Not Allowed', {
+    status: 405,
+    headers: { 'Allow': 'GET,POST,DELETE' }
+  })
 }
 
 // Ensure this API route is deployed to the Edge runtime so Cloudflare bindings and headers are available.

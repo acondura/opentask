@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "pages:build": "npx @cloudflare/next-on-pages@latest build .next --output ./cloudflare-pages",
+    "pages:build": "npx @cloudflare/next-on-pages@latest --outdir ./cloudflare-pages",
     "start": "next start",
     "pages:deploy": "npx wrangler pages deploy ./cloudflare-pages",
     "test": "echo \"No tests configured. Run npm run build && npm run pages:build to verify output.\""

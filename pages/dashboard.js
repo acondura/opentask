@@ -1,17 +1,31 @@
 import Head from 'next/head'
 import { useEffect, useState, useRef } from 'react'
 
-const STORAGE_KEY = 'opentask.v1'
+function getStorageKey(email) {
+  return email ? `opentask.v1:${email}` : 'opentask.v1:public'
+}
 
 function uid() { return Math.random().toString(36).slice(2, 9) }
 
-function saveState(state) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)) } catch (e) { } }
-function loadState() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || null } catch (e) { return null } }
+function saveState(state, email) { try { localStorage.setItem(getStorageKey(email), JSON.stringify(state)) } catch (e) { } }
+function loadState(email) { try { return JSON.parse(localStorage.getItem(getStorageKey(email))) || null } catch (e) { return null } }
 
-async function loadFromKV() { try { const r = await fetch('/api/kv'); if (!r.ok) return null; return await r.json() } catch (e) { return null } }
-async function saveToKV(state) { try { await fetch('/api/kv', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: state }) }) } catch (e) { } }
+async function loadFromKV(email) {
+  try {
+    const url = email ? `/api/kv?owner=${encodeURIComponent(email)}` : '/api/kv'
+    const r = await fetch(url)
+    if (!r.ok) return null
+    return await r.json()
+  } catch (e) { return null }
+}
+async function saveToKV(state, email) {
+  try {
+    const url = email ? `/api/kv?owner=${encodeURIComponent(email)}` : '/api/kv'
+    await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: state }) })
+  } catch (e) { }
+}
 
-async function saveTaskToKV(task, projectId) {
+async function saveTaskToKV(task, projectId, email) {
   try {
     const { children, ...rest } = task
     const payload = {
@@ -22,12 +36,14 @@ async function saveTaskToKV(task, projectId) {
       projectId,
       childrenIds: (children || []).map(c => c.id)
     }
-    await fetch('/api/kv', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: payload }) })
+    const url = email ? `/api/kv?owner=${encodeURIComponent(email)}` : '/api/kv'
+    await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: payload }) })
   } catch (e) { console.error(e) }
 }
-async function deleteTaskFromKV(projectId, id) {
+async function deleteTaskFromKV(projectId, id, email) {
   try {
-    await fetch('/api/kv', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, id }) })
+    const url = email ? `/api/kv?owner=${encodeURIComponent(email)}` : '/api/kv'
+    await fetch(url, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, id }) })
   } catch (e) { console.error(e) }
 }
 
@@ -41,7 +57,7 @@ function toBase64(file) {
 }
 
 // Subcomponent for editing/displaying task details
-function TaskDetails({ task, projectId, onSave, onDelete }) {
+function TaskDetails({ task, projectId, onSave, onDelete, email }) {
   const [name, setName] = useState(task.name || '')
   const [description, setDescription] = useState(task.description || '')
   const [priority, setPriority] = useState(task.priority || 'medium')
@@ -76,7 +92,8 @@ function TaskDetails({ task, projectId, onSave, onDelete }) {
     setUploading(true)
     try {
       const b64 = await toBase64(file)
-      const res = await fetch('/api/upload', {
+      const url = email ? `/api/upload?owner=${encodeURIComponent(email)}` : '/api/upload'
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -219,7 +236,7 @@ function TaskDetails({ task, projectId, onSave, onDelete }) {
         <div className="space-y-1.5">
           {task.attachments && task.attachments.length > 0 ? (
             task.attachments.map((att, i) => (
-              <div key={i} className="flex items-center justify-between text-xs bg-slate-800/40 border border-slate-850 p-2.5 rounded-xl">
+              <div key={i} className="flex items-center justify-between text-xs bg-slate-800/40 border border-slate-800 p-2.5 rounded-xl">
                 <div className="flex items-center gap-2 truncate pr-2">
                   <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
@@ -228,7 +245,7 @@ function TaskDetails({ task, projectId, onSave, onDelete }) {
                   {att.size && <span className="text-[10px] text-slate-500">({Math.round(att.size / 1024)} KB)</span>}
                 </div>
                 <a
-                  href={`/api/download?projectId=${projectId}&taskId=${task.id}&filename=${encodeURIComponent(att.filename)}`}
+                  href={`/api/download?projectId=${projectId}&taskId=${task.id}&filename=${encodeURIComponent(att.filename)}${email ? `&owner=${encodeURIComponent(email)}` : ''}`}
                   download
                   className="text-xs text-indigo-400 hover:text-indigo-300 transition underline font-medium"
                 >
@@ -259,7 +276,39 @@ function TaskDetails({ task, projectId, onSave, onDelete }) {
   )
 }
 
-export default function Dashboard() {
+export default function Dashboard({ userEmail }) {
+  const [clientEmail, setClientEmail] = useState(null)
+  const [mounted, setMounted] = useState(false)
+  const [emailInput, setEmailInput] = useState('')
+  const [loginError, setLoginError] = useState('')
+
+  useEffect(() => {
+    setMounted(true)
+    if (!userEmail) {
+      const saved = localStorage.getItem('opentask.logged_in_email')
+      if (saved) {
+        setClientEmail(saved)
+      }
+    }
+  }, [userEmail])
+
+  const activeEmail = userEmail || clientEmail
+
+  const handleMockLogin = (e) => {
+    e.preventDefault()
+    if (!emailInput.trim()) {
+      setLoginError('Email address is required')
+      return
+    }
+    if (!/\S+@\S+\.\S+/.test(emailInput)) {
+      setLoginError('Please enter a valid email address')
+      return
+    }
+    localStorage.setItem('opentask.logged_in_email', emailInput.trim())
+    setClientEmail(emailInput.trim())
+    setLoginError('')
+  }
+
   const [projects, setProjects] = useState([])
   const [newProjectTitle, setNewProjectTitle] = useState('')
   const [selectedProjectId, setSelectedProjectId] = useState(null)
@@ -277,21 +326,26 @@ export default function Dashboard() {
 
   // Fetch initial state
   useEffect(() => {
+    if (!activeEmail) return
     (async () => {
-      const s = loadState()
+      const s = loadState(activeEmail)
       if (s) setProjects(s)
-      const kv = await loadFromKV()
+      const kv = await loadFromKV(activeEmail)
       if (kv && Array.isArray(kv) && kv.length) {
         setProjects(kv)
-        saveState(kv)
+        saveState(kv, activeEmail)
+      } else {
+        setProjects([])
       }
     })()
-  }, [])
+  }, [activeEmail])
 
   // Auto-save changes locally
   useEffect(() => {
-    saveState(projects)
-  }, [projects])
+    if (activeEmail) {
+      saveState(projects, activeEmail)
+    }
+  }, [projects, activeEmail])
 
   // Reset selected task when project changes
   useEffect(() => {
@@ -317,8 +371,8 @@ export default function Dashboard() {
     const nextId = uid()
     setProjects(p => {
       const next = [{ id: nextId, title: newProjectTitle.trim(), tasks: [] }, ...p]
-      saveState(next)
-      saveToKV(next)
+      saveState(next, activeEmail)
+      saveToKV(next, activeEmail)
       return next
     })
     setSelectedProjectId(nextId)
@@ -331,8 +385,8 @@ export default function Dashboard() {
     if (!confirm('Are you sure you want to delete this project?')) return
     setProjects(prev => {
       const cp = prev.filter(p => p.id !== id)
-      saveState(cp)
-      saveToKV(cp)
+      saveState(cp, activeEmail)
+      saveToKV(cp, activeEmail)
       return cp
     })
     if (selectedProjectId === id) {
@@ -372,8 +426,8 @@ export default function Dashboard() {
           parent.children.unshift(newTask)
         }
       }
-      saveState(cp)
-      saveTaskToKV(newTask, projectId)
+      saveState(cp, activeEmail)
+      saveTaskToKV(newTask, projectId, activeEmail)
       return cp
     })
 
@@ -382,7 +436,8 @@ export default function Dashboard() {
     if (file) {
       try {
         const b64 = await toBase64(file)
-        const res = await fetch('/api/upload', {
+        const url = activeEmail ? `/api/upload?owner=${encodeURIComponent(activeEmail)}` : '/api/upload'
+        const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ projectId, taskId: newTaskId, filename: file.name, contentBase64: b64 })
@@ -418,10 +473,10 @@ export default function Dashboard() {
       if (!proj) return prev
       const [newTasks, removed] = removeTaskById(proj.tasks, taskId)
       proj.tasks = newTasks
-      saveState(cp)
+      saveState(cp, activeEmail)
       if (removed) {
         const ids = gatherIds(removed)
-        ids.forEach(id => deleteTaskFromKV(projectId, id))
+        ids.forEach(id => deleteTaskFromKV(projectId, id, activeEmail))
       }
       return cp
     })
@@ -489,8 +544,8 @@ export default function Dashboard() {
       const task = findTaskById(proj.tasks, taskId)
       if (!task) return prev
       Object.assign(task, fields)
-      saveState(cp)
-      saveTaskToKV(task, proj.id)
+      saveState(cp, activeEmail)
+      saveTaskToKV(task, proj.id, activeEmail)
       return cp
     })
   }
@@ -551,11 +606,11 @@ export default function Dashboard() {
       if (!removed) return cp
 
       proj.tasks = insertTaskAt(proj.tasks, dest.overTaskId, dest.position, removed)
-      saveState(cp)
+      saveState(cp, activeEmail)
       
       const updated = removed
       updated.parentId = dest.overTaskId || null
-      saveTaskToKV(updated, proj.id)
+      saveTaskToKV(updated, proj.id, activeEmail)
       return cp
     })
 
@@ -686,6 +741,7 @@ export default function Dashboard() {
                     projectId={projectId}
                     onSave={(fields) => handleUpdateTask(t.id, fields)}
                     onDelete={() => handleDeleteTask(t.id)}
+                    email={activeEmail}
                   />
                 </div>
               )}
@@ -696,6 +752,108 @@ export default function Dashboard() {
           )
         })}
       </ul>
+    )
+  }
+
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center">
+        <svg className="animate-spin h-8 w-8 text-indigo-500" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+        </svg>
+      </div>
+    )
+  }
+
+  if (!activeEmail) {
+    return (
+      <>
+        <Head>
+          <title>Sign In — OpenTask</title>
+        </Head>
+        <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-6 relative overflow-hidden bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-950/20 via-slate-950 to-slate-950">
+          <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-indigo-500/10 rounded-full blur-3xl -z-10 pointer-events-none" />
+          <div className="absolute bottom-1/4 left-1/3 w-[300px] h-[300px] bg-cyan-500/5 rounded-full blur-3xl -z-10 pointer-events-none" />
+
+          <div className="max-w-md w-full space-y-8 relative z-10">
+            <div className="flex flex-col items-center justify-center gap-3 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center shadow-2xl shadow-indigo-500/30 mb-2">
+                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2" />
+                </svg>
+              </div>
+              <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
+                OpenTask
+              </h1>
+              <p className="text-slate-400 text-sm max-w-xs">
+                Premium workspace gated by Cloudflare Access. Please authenticate to access your tasks.
+              </p>
+            </div>
+
+            <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-8 backdrop-blur-xl shadow-2xl space-y-6">
+              <div className="space-y-1.5 text-center sm:text-left">
+                <h2 className="text-xl font-bold text-white">Sign In</h2>
+                <p className="text-xs text-slate-400">
+                  Enter your email below to access or create your workspace.
+                </p>
+              </div>
+
+              <form onSubmit={handleMockLogin} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Email Address</label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-500 pointer-events-none">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.206" />
+                      </svg>
+                    </span>
+                    <input
+                      type="email"
+                      value={emailInput}
+                      onChange={(e) => {
+                        setEmailInput(e.target.value)
+                        if (loginError) setLoginError('')
+                      }}
+                      className={`w-full bg-slate-950/60 border ${loginError ? 'border-rose-500/80 focus:border-rose-500' : 'border-slate-800 focus:border-indigo-500'} rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none transition-all duration-200`}
+                      placeholder="you@example.com"
+                      autoFocus
+                    />
+                  </div>
+                  {loginError && (
+                    <p className="text-xs text-rose-400 font-medium flex items-center gap-1 mt-1">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      {loginError}
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-semibold py-3 px-4 rounded-2xl shadow-xl shadow-indigo-600/20 transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2 text-sm"
+                >
+                  Enter Workspace
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </form>
+
+              <div className="relative flex py-1 items-center">
+                <div className="flex-grow border-t border-slate-800/80"></div>
+                <span className="flex-shrink mx-3 text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Cloudflare Access Security</span>
+                <div className="flex-grow border-t border-slate-800/80"></div>
+              </div>
+
+              <div className="text-[11px] text-slate-500 leading-relaxed text-center bg-slate-950/40 border border-slate-900/60 p-3 rounded-xl">
+                Note: In production environments, authentication is managed securely by Cloudflare. This prompt simulates identity validation for local development and sandbox setups.
+              </div>
+            </div>
+          </div>
+        </main>
+      </>
     )
   }
 
@@ -744,7 +902,7 @@ export default function Dashboard() {
                   value={newProjectTitle}
                   onChange={(e) => setNewProjectTitle(e.target.value)}
                   placeholder="Project name..."
-                  className="w-full text-xs bg-slate-850 border border-slate-750 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-indigo-500"
+                  className="w-full text-xs bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-indigo-500"
                   onKeyDown={(e) => { if (e.key === 'Enter') addProject() }}
                 />
                 <div className="flex justify-end gap-2 text-[10px]">
@@ -793,6 +951,43 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* User Profile Footer */}
+          <div className="p-4 border-t border-slate-800/80 bg-slate-950/20 flex flex-col gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              {/* User Avatar */}
+              <div className="w-9 h-9 rounded-xl bg-indigo-600/10 border border-indigo-500/25 flex items-center justify-center text-indigo-400 font-bold text-sm flex-shrink-0 uppercase">
+                {activeEmail ? activeEmail[0] : 'U'}
+              </div>
+              {/* Email details */}
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-slate-200 truncate">
+                  {activeEmail}
+                </p>
+                <p className="text-[10px] text-slate-500 truncate">
+                  {userEmail ? 'Verified via Access' : 'Local Sandbox Mode'}
+                </p>
+              </div>
+            </div>
+            
+            {/* Sign Out Button */}
+            <button
+              onClick={() => {
+                if (userEmail) {
+                  window.location.href = '/cdn-cgi/access/logout'
+                } else {
+                  localStorage.removeItem('opentask.logged_in_email')
+                  setClientEmail(null)
+                }
+              }}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg border border-slate-800/80 hover:border-rose-900/30 bg-slate-900/40 hover:bg-rose-950/10 text-slate-400 hover:text-rose-400 text-xs font-semibold transition"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Sign Out
+            </button>
           </div>
         </aside>
 
@@ -877,6 +1072,7 @@ export default function Dashboard() {
                           projectId={currentProject.id}
                           onSave={(fields) => handleUpdateTask(activeTask.id, fields)}
                           onDelete={() => handleDeleteTask(activeTask.id)}
+                          email={activeEmail}
                         />
                       ) : (
                         <div className="flex flex-col items-center justify-center py-20 text-slate-500 italic">
@@ -1003,4 +1199,63 @@ export default function Dashboard() {
       )}
     </>
   )
+}
+
+export const runtime = 'experimental-edge'
+
+export async function getServerSideProps(context) {
+  const req = context.req
+  const h = req.headers || {}
+  
+  function base64UrlDecodeToJson(payload) {
+    try {
+      let str = payload.replace(/-/g, '+').replace(/_/g, '/')
+      while (str.length % 4) str += '='
+      const binary = atob(str)
+      const json = decodeURIComponent(Array.prototype.map.call(binary, c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''))
+      return JSON.parse(json)
+    } catch (e) {
+      return null
+    }
+  }
+
+  function tryDecodeJwtForEmail(token) {
+    try {
+      const parts = token.split('.')
+      if (parts.length < 2) return null
+      const payload = parts[1]
+      const obj = base64UrlDecodeToJson(payload)
+      return obj?.email || obj?.user?.email || obj?.email_address || null
+    } catch (e) {
+      return null
+    }
+  }
+
+  function ownerFromReq(req) {
+    const candidates = [
+      h['cf-access-authenticated-user-email'],
+      h['x-authenticated-user-email'],
+      h['x-forwarded-user-email'],
+      h['email'],
+      h['x-user-email']
+    ]
+    for (const c of candidates) if (c) return Array.isArray(c) ? c[0] : c
+    const jwt = h['cf-access-jwt-assertion'] || h['cf-access-jwt'] || h['x-forwarded-jwt'] || h['authorization']
+    if (jwt) {
+      const tok = Array.isArray(jwt) ? jwt[0] : jwt
+      const maybe = tok.replace(/^Bearer\s+/i, '')
+      const email = tryDecodeJwtForEmail(maybe)
+      if (email) return email
+    }
+    if (context.query && context.query.owner) return context.query.owner
+    return null
+  }
+
+  const email = ownerFromReq(req)
+
+  return {
+    props: {
+      userEmail: email || null
+    }
+  }
 }
