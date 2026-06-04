@@ -5,7 +5,15 @@ function getStorageKey(email) {
   return email ? `opentask.v1:${email}` : 'opentask.v1:public'
 }
 
-function uid() { return Math.random().toString(36).slice(2, 9) }
+function uid() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
 
 function saveState(state, email) { try { localStorage.setItem(getStorageKey(email), JSON.stringify(state)) } catch (e) { } }
 function loadState(email) { try { return JSON.parse(localStorage.getItem(getStorageKey(email))) || null } catch (e) { return null } }
