@@ -84,8 +84,8 @@ function toBase64(file) {
 function TaskDetails({ task, projectId, onSave, onDelete, email }) {
   const [name, setName] = useState(task.name || '')
   const [description, setDescription] = useState(task.description || '')
-  const [priority, setPriority] = useState(task.priority || 'medium')
-  const [difficulty, setDifficulty] = useState(task.difficulty || 'medium')
+  const [priority, setPriority] = useState(task.priority || 'low')
+  const [difficulty, setDifficulty] = useState(task.difficulty || 'low')
   const [dueDate, setDueDate] = useState(task.dueDate || '')
   const [uploading, setUploading] = useState(false)
   const [saveStatus, setSaveStatus] = useState('')
@@ -95,8 +95,8 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
   useEffect(() => {
     setName(task.name || '')
     setDescription(task.description || '')
-    setPriority(task.priority || 'medium')
-    setDifficulty(task.difficulty || 'medium')
+    setPriority(task.priority || 'low')
+    setDifficulty(task.difficulty || 'low')
     setDueDate(task.dueDate || '')
     setSaveStatus('')
     setIsEditingDesc(false)
@@ -427,10 +427,10 @@ export default function Dashboard({ userEmail }) {
         (t.description && t.description.toLowerCase().includes(filterText.toLowerCase()))
 
       const matchPriority = filterPriority === 'all' || 
-        (t.priority || 'medium') === filterPriority
+        (t.priority || 'low') === filterPriority
 
       const matchDifficulty = filterDifficulty === 'all' || 
-        (t.difficulty || 'medium') === filterDifficulty
+        (t.difficulty || 'low') === filterDifficulty
 
       const matchDueDate = !filterDueDate || (t.dueDate === filterDueDate)
 
@@ -544,8 +544,8 @@ export default function Dashboard({ userEmail }) {
       name,
       completed: false,
       description: '',
-      priority: 'medium',
-      difficulty: 'medium',
+      priority: 'low',
+      difficulty: 'low',
       dueDate: '',
       attachments: [],
       children: []
@@ -793,7 +793,7 @@ export default function Dashboard({ userEmail }) {
             low: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
           }
 
-          const currentDifficulty = t.difficulty || 'medium'
+          const currentDifficulty = t.difficulty || 'low'
           const bgStyle = difficultyBg[currentDifficulty]
 
           return (
