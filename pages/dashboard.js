@@ -352,14 +352,25 @@ export default function Dashboard({ userEmail }) {
   const [mounted, setMounted] = useState(false)
   const [emailInput, setEmailInput] = useState('')
   const [loginError, setLoginError] = useState('')
+  const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
     setMounted(true)
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 1024)
+    }
+    handleResize()
+    window.addEventListener('resize', handleResize)
+
     if (!userEmail) {
       const saved = localStorage.getItem('opentask.logged_in_email')
       if (saved) {
         setClientEmail(saved)
       }
+    }
+
+    return () => {
+      window.removeEventListener('resize', handleResize)
     }
   }, [userEmail])
 
@@ -487,7 +498,7 @@ export default function Dashboard({ userEmail }) {
 
   const activeTask = selectedTaskId
     ? findTaskById(currentProject?.tasks || [], selectedTaskId)
-    : getFirstTask(currentProject?.tasks || [])
+    : (isMobile ? null : getFirstTask(currentProject?.tasks || []))
 
   const activeTaskId = activeTask?.id || null
 
@@ -557,7 +568,11 @@ export default function Dashboard({ userEmail }) {
       return cp
     })
 
-    setSelectedTaskId(newTaskId)
+    if (isMobile) {
+      setSelectedTaskId(null)
+    } else {
+      setSelectedTaskId(newTaskId)
+    }
 
     if (file) {
       try {
@@ -828,15 +843,16 @@ export default function Dashboard({ userEmail }) {
                 </div>
 
                 {/* Task Hover buttons */}
-                <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                <div className="flex items-center gap-1.5 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity ml-2">
                   <button
                     onClick={(e) => { e.stopPropagation(); openAddTaskModal(projectId, t.id) }}
-                    className="p-1 rounded-md text-zinc-300 hover:text-white hover:bg-zinc-600 transition"
+                    className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-zinc-400 hover:text-white hover:bg-zinc-700 transition"
                     title="Add Subtask"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
                     </svg>
+                    <span>Add subtask</span>
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); handleDeleteTask(t.id) }}
