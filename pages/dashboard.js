@@ -397,13 +397,13 @@ export default function Dashboard({ userEmail }) {
 
   // Filters State
   const [filterText, setFilterText] = useState('')
-  const [filterPriorities, setFilterPriorities] = useState([])
-  const [filterDifficulties, setFilterDifficulties] = useState([])
+  const [filterPriority, setFilterPriority] = useState('all')
+  const [filterDifficulty, setFilterDifficulty] = useState('all')
   const [filterDueDate, setFilterDueDate] = useState('')
   const [filterAttachments, setFilterAttachments] = useState('all')
 
   function filterTaskTree(tasks) {
-    if (!filterText && filterPriorities.length === 0 && filterDifficulties.length === 0 && !filterDueDate && filterAttachments === 'all') {
+    if (!filterText && filterPriority === 'all' && filterDifficulty === 'all' && !filterDueDate && filterAttachments === 'all') {
       return tasks
     }
 
@@ -415,11 +415,11 @@ export default function Dashboard({ userEmail }) {
         (t.name && t.name.toLowerCase().includes(filterText.toLowerCase())) ||
         (t.description && t.description.toLowerCase().includes(filterText.toLowerCase()))
 
-      const matchPriority = filterPriorities.length === 0 || 
-        filterPriorities.includes(t.priority || 'medium')
+      const matchPriority = filterPriority === 'all' || 
+        (t.priority || 'medium') === filterPriority
 
-      const matchDifficulty = filterDifficulties.length === 0 || 
-        filterDifficulties.includes(t.difficulty || 'medium')
+      const matchDifficulty = filterDifficulty === 'all' || 
+        (t.difficulty || 'medium') === filterDifficulty
 
       const matchDueDate = !filterDueDate || (t.dueDate === filterDueDate)
 
@@ -1184,7 +1184,7 @@ export default function Dashboard({ userEmail }) {
                     </div>
 
                     {/* Advanced Filter Bar */}
-                    <div className="bg-zinc-800/30 border border-zinc-700/80 p-4 rounded-xl space-y-3">
+                    <div className="bg-zinc-800/50 border border-zinc-700/80 p-4 rounded-xl space-y-3">
                       <div className="flex flex-wrap items-center gap-3">
                         {/* Search text (Title/Description) */}
                         <div className="flex-1 min-w-[200px] relative">
@@ -1224,62 +1224,34 @@ export default function Dashboard({ userEmail }) {
 
                       <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-zinc-700/50">
                         <div className="flex flex-wrap items-center gap-6">
-                          {/* Priority Multi-select */}
+                          {/* Priority Select */}
                           <div className="flex items-center gap-2">
                             <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Priority:</span>
-                            <div className="flex gap-1 bg-zinc-950 p-0.5 rounded-lg border border-zinc-700/80">
-                              {['low', 'medium', 'high'].map(p => {
-                                const active = filterPriorities.includes(p)
-                                const toggle = () => {
-                                  setFilterPriorities(prev =>
-                                    prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
-                                  )
-                                }
-                                const colors = {
-                                  low: active ? 'bg-emerald-500/20 text-emerald-400' : 'hover:bg-zinc-800 text-zinc-400',
-                                  medium: active ? 'bg-amber-500/20 text-amber-400' : 'hover:bg-zinc-800 text-zinc-400',
-                                  high: active ? 'bg-rose-500/20 text-rose-400' : 'hover:bg-zinc-800 text-zinc-400'
-                                }
-                                return (
-                                  <button
-                                    key={p}
-                                    onClick={toggle}
-                                    className={`text-[10px] font-semibold px-2 py-1 rounded-md capitalize transition ${colors[p]}`}
-                                  >
-                                    {p}
-                                  </button>
-                                )
-                              })}
-                            </div>
+                            <select
+                              value={filterPriority}
+                              onChange={(e) => setFilterPriority(e.target.value)}
+                              className="text-xs bg-zinc-950 border border-zinc-700/80 rounded-lg px-2.5 py-1.5 text-zinc-300 focus:outline-none focus:border-indigo-500 transition"
+                            >
+                              <option value="all">All Priorities</option>
+                              <option value="low">Low</option>
+                              <option value="medium">Medium</option>
+                              <option value="high">High</option>
+                            </select>
                           </div>
 
-                          {/* Difficulty Multi-select */}
+                          {/* Difficulty Select */}
                           <div className="flex items-center gap-2">
                             <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Difficulty:</span>
-                            <div className="flex gap-1 bg-zinc-950 p-0.5 rounded-lg border border-zinc-700/80">
-                              {['low', 'medium', 'hard'].map(d => {
-                                const active = filterDifficulties.includes(d)
-                                const toggle = () => {
-                                  setFilterDifficulties(prev =>
-                                    prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]
-                                  )
-                                }
-                                const colors = {
-                                  low: active ? 'bg-emerald-500/20 text-emerald-400' : 'hover:bg-zinc-800 text-zinc-400',
-                                  medium: active ? 'bg-amber-500/20 text-amber-400' : 'hover:bg-zinc-800 text-zinc-400',
-                                  hard: active ? 'bg-rose-500/20 text-rose-400' : 'hover:bg-zinc-800 text-zinc-400'
-                                }
-                                return (
-                                  <button
-                                    key={d}
-                                    onClick={toggle}
-                                    className={`text-[10px] font-semibold px-2 py-1 rounded-md capitalize transition ${colors[d]}`}
-                                  >
-                                    {d}
-                                  </button>
-                                )
-                              })}
-                            </div>
+                            <select
+                              value={filterDifficulty}
+                              onChange={(e) => setFilterDifficulty(e.target.value)}
+                              className="text-xs bg-zinc-950 border border-zinc-700/80 rounded-lg px-2.5 py-1.5 text-zinc-300 focus:outline-none focus:border-indigo-500 transition"
+                            >
+                              <option value="all">All Difficulties</option>
+                              <option value="low">Low</option>
+                              <option value="medium">Medium</option>
+                              <option value="hard">Hard</option>
+                            </select>
                           </div>
                         </div>
 
@@ -1316,14 +1288,14 @@ export default function Dashboard({ userEmail }) {
                       </div>
 
                       {/* Clear Filters Indicator */}
-                      {(filterText || filterPriorities.length > 0 || filterDifficulties.length > 0 || filterDueDate || filterAttachments !== 'all') && (
+                      {(filterText || filterPriority !== 'all' || filterDifficulty !== 'all' || filterDueDate || filterAttachments !== 'all') && (
                         <div className="flex items-center justify-between pt-2 border-t border-zinc-700/20 text-[10px] text-zinc-400">
                           <span>Active filters restricting list.</span>
                           <button
                             onClick={() => {
                               setFilterText('')
-                              setFilterPriorities([])
-                              setFilterDifficulties([])
+                              setFilterPriority('all')
+                              setFilterDifficulty('all')
                               setFilterDueDate('')
                               setFilterAttachments('all')
                             }}
