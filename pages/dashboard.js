@@ -901,92 +901,12 @@ export default function Dashboard({ userEmail }) {
 
   if (!activeEmail) {
     return (
-      <>
-        <Head>
-          <title>Sign In — OpenTask</title>
-        </Head>
-        <main className="min-h-screen bg-zinc-800 text-zinc-50 flex flex-col items-center justify-center p-6 relative overflow-hidden bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-950/20 via-zinc-800 to-zinc-800">
-          <div className="absolute top-1/4 left-1/2 -tranzinc-x-1/2 -tranzinc-y-1/2 w-[400px] h-[400px] bg-indigo-500/10 rounded-full blur-3xl -z-10 pointer-events-none" />
-          <div className="absolute bottom-1/4 left-1/3 w-[300px] h-[300px] bg-cyan-500/5 rounded-full blur-3xl -z-10 pointer-events-none" />
-
-          <div className="max-w-md w-full space-y-8 relative z-10">
-            <div className="flex flex-col items-center justify-center gap-3 text-center">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center shadow-2xl shadow-indigo-500/30 mb-2">
-                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2" />
-                </svg>
-              </div>
-              <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white via-zinc-50 to-zinc-200 bg-clip-text text-transparent">
-                OpenTask
-              </h1>
-              <p className="text-zinc-300 text-sm max-w-xs">
-                Premium workspace gated by Cloudflare Access. Please authenticate to access your tasks.
-              </p>
-            </div>
-
-            <div className="bg-zinc-800/40 border border-zinc-700/80 rounded-3xl p-8 backdrop-blur-xl shadow-2xl space-y-6">
-              <div className="space-y-1.5 text-center sm:text-left">
-                <h2 className="text-xl font-bold text-white">Sign In</h2>
-                <p className="text-xs text-zinc-300">
-                  Enter your email below to access or create your workspace.
-                </p>
-              </div>
-
-              <form onSubmit={handleMockLogin} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider block">Email Address</label>
-                  <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-zinc-400 pointer-events-none">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.206" />
-                      </svg>
-                    </span>
-                    <input
-                      type="email"
-                      value={emailInput}
-                      onChange={(e) => {
-                        setEmailInput(e.target.value)
-                        if (loginError) setLoginError('')
-                      }}
-                      className={`w-full bg-zinc-900/60 border ${loginError ? 'border-rose-500/80 focus:border-rose-500' : 'border-zinc-700 focus:border-indigo-500'} rounded-2xl pl-11 pr-4 py-3 text-sm text-white placeholder-zinc-400 focus:outline-none transition-all duration-200`}
-                      placeholder="you@example.com"
-                      autoFocus
-                    />
-                  </div>
-                  {loginError && (
-                    <p className="text-xs text-rose-400 font-medium flex items-center gap-1 mt-1">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                      {loginError}
-                    </p>
-                  )}
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-semibold py-3 px-4 rounded-2xl shadow-xl shadow-indigo-600/20 transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2 text-sm"
-                >
-                  Enter Workspace
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </form>
-
-              <div className="relative flex py-1 items-center">
-                <div className="flex-grow border-t border-zinc-700/80"></div>
-                <span className="flex-shrink mx-3 text-[10px] text-zinc-400 uppercase tracking-widest font-semibold">Cloudflare Access Security</span>
-                <div className="flex-grow border-t border-zinc-700/80"></div>
-              </div>
-
-              <div className="text-[11px] text-zinc-400 leading-relaxed text-center bg-zinc-900/40 border border-zinc-800/60 p-3 rounded-xl">
-                Note: In production environments, authentication is managed securely by Cloudflare. This prompt simulates identity validation for local development and sandbox setups.
-              </div>
-            </div>
-          </div>
-        </main>
-      </>
+      <div className="min-h-screen bg-zinc-900 text-zinc-50 flex items-center justify-center">
+        <svg className="animate-spin h-8 w-8 text-indigo-500" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+        </svg>
+      </div>
     )
   }
 
@@ -1532,11 +1452,26 @@ export async function getServerSideProps(context) {
     return null
   }
 
-  const email = ownerFromReq(req)
+  const host = h.host || ''
+  const isLocal = host.includes('localhost') || host.includes('127.0.0.1')
+  let email = ownerFromReq(req)
+
+  if (!email && isLocal) {
+    email = 'local-dev@opentask.local'
+  }
+
+  if (!email) {
+    return {
+      redirect: {
+        destination: '/',
+        permanent: false
+      }
+    }
+  }
 
   return {
     props: {
-      userEmail: email || null
+      userEmail: email
     }
   }
 }
