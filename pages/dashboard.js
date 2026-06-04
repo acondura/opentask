@@ -824,35 +824,6 @@ export default function Dashboard({ userEmail }) {
                     <span className={`text-sm font-semibold truncate block ${t.completed ? 'line-through text-zinc-400 font-normal' : 'text-zinc-100'}`}>
                       {t.name}
                     </span>
-                    {/* Inline badges */}
-                    <div className="flex lg:hidden items-center gap-2 mt-1">
-                      {t.priority && (
-                        <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded-md tracking-wider ${priorityColors[t.priority]}`}>
-                          {t.priority}
-                        </span>
-                      )}
-                      {t.difficulty && (
-                        <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded-md tracking-wider ${difficultyColors[t.difficulty]}`}>
-                          {t.difficulty}
-                        </span>
-                      )}
-                      {t.dueDate && (
-                        <span className="text-[10px] text-zinc-300 flex items-center gap-1">
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          {t.dueDate}
-                        </span>
-                      )}
-                      {t.attachments && t.attachments.length > 0 && (
-                        <span className="text-[10px] text-indigo-400 flex items-center gap-0.5">
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                          </svg>
-                          {t.attachments.length}
-                        </span>
-                      )}
-                    </div>
                   </div>
                 </div>
 
@@ -869,7 +840,7 @@ export default function Dashboard({ userEmail }) {
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); handleDeleteTask(t.id) }}
-                    className="p-1 rounded-md text-zinc-300 hover:text-rose-400 hover:bg-zinc-600 transition"
+                    className="hidden lg:inline-block p-1 rounded-md text-zinc-300 hover:text-rose-400 hover:bg-zinc-600 transition"
                     title="Delete Task"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
