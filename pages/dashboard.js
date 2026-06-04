@@ -448,6 +448,7 @@ export default function Dashboard({ userEmail }) {
   const [shareUpdating, setShareUpdating] = useState(false)
   const [shareError, setShareError] = useState('')
   const [shareSuccess, setShareSuccess] = useState('')
+  const [isEditingTask, setIsEditingTask] = useState(false)
 
   useEffect(() => {
     setMounted(true)
@@ -1041,7 +1042,7 @@ export default function Dashboard({ userEmail }) {
             >
               {/* Task Row Header */}
               <div
-                onClick={() => setSelectedTaskId(isTaskActive ? null : t.id)}
+                onClick={() => setSelectedTaskId(t.id)}
                 className={`flex items-center justify-between p-3.5 cursor-pointer rounded-none transition ${isTaskActive ? 'bg-zinc-700/50' : 'hover:bg-zinc-700/20'}`}
               >
                 <div className="flex items-center gap-3 min-w-0 flex-1">
