@@ -69,6 +69,7 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
   const [name, setName] = useState(task.name || '')
   const [description, setDescription] = useState(task.description || '')
   const [priority, setPriority] = useState(task.priority || 'medium')
+  const [difficulty, setDifficulty] = useState(task.difficulty || 'medium')
   const [dueDate, setDueDate] = useState(task.dueDate || '')
   const [uploading, setUploading] = useState(false)
   const [saveStatus, setSaveStatus] = useState('')
@@ -78,6 +79,7 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
     setName(task.name || '')
     setDescription(task.description || '')
     setPriority(task.priority || 'medium')
+    setDifficulty(task.difficulty || 'medium')
     setDueDate(task.dueDate || '')
     setSaveStatus('')
   }, [task.id])
@@ -89,7 +91,7 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
   }
 
   const handleSave = () => {
-    onSave({ name, description, priority, dueDate })
+    onSave({ name, description, priority, difficulty, dueDate })
     setSaveStatus('Changes saved!')
     setTimeout(() => setSaveStatus(''), 2000)
   }
@@ -189,6 +191,29 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
         </div>
 
         <div className="space-y-1">
+          <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Difficulty</label>
+          <div className="flex gap-1.5">
+            {['low', 'medium', 'hard'].map(d => {
+              const isActive = difficulty === d
+              const colors = {
+                low: isActive ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50' : 'hover:bg-zinc-700 text-zinc-300 border-transparent',
+                medium: isActive ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'hover:bg-zinc-700 text-zinc-300 border-transparent',
+                hard: isActive ? 'bg-rose-500/20 text-rose-400 border-rose-500/50' : 'hover:bg-zinc-700 text-zinc-300 border-transparent'
+              }
+              return (
+                <button
+                  key={d}
+                  onClick={() => { setDifficulty(d); triggerSave({ difficulty: d }); }}
+                  className={`flex-1 text-xs font-medium py-1.5 px-2 border rounded-lg capitalize transition ${colors[d]}`}
+                >
+                  {d}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-1 col-span-2">
           <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Due Date</label>
           <input
             type="date"
@@ -417,6 +442,7 @@ export default function Dashboard({ userEmail }) {
       completed: false,
       description: '',
       priority: 'medium',
+      difficulty: 'medium',
       dueDate: '',
       attachments: [],
       children: []
@@ -648,10 +674,25 @@ export default function Dashboard({ userEmail }) {
             low: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
           }
 
+          const difficultyBg = {
+            low: 'bg-emerald-950/25 border-l-2 border-l-emerald-500/60 hover:bg-emerald-950/35',
+            medium: 'bg-amber-950/25 border-l-2 border-l-amber-500/60 hover:bg-amber-950/35',
+            hard: 'bg-rose-950/25 border-l-2 border-l-rose-500/60 hover:bg-rose-950/35'
+          }
+
+          const difficultyColors = {
+            hard: 'bg-rose-500/10 text-rose-400 border border-rose-500/20',
+            medium: 'bg-amber-500/10 text-amber-400 border border-amber-500/20',
+            low: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+          }
+
+          const currentDifficulty = t.difficulty || 'medium'
+          const bgStyle = difficultyBg[currentDifficulty]
+
           return (
             <li
               key={t.id}
-              className={`rounded-none border-b border-zinc-700/80 last:border-b-0 ${dragStyle} transition-all duration-200 group bg-zinc-800/40`}
+              className={`rounded-none border-b border-zinc-700/80 last:border-b-0 ${dragStyle} transition-all duration-200 group ${bgStyle}`}
               draggable
               onDragStart={(e) => onDragStart(e, projectId, t.id)}
               onDragOver={(e) => onDragOver(e, projectId, t.id)}
@@ -692,10 +733,15 @@ export default function Dashboard({ userEmail }) {
                       {t.name}
                     </span>
                     {/* Inline badges */}
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex lg:hidden items-center gap-2 mt-1">
                       {t.priority && (
                         <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded-md tracking-wider ${priorityColors[t.priority]}`}>
                           {t.priority}
+                        </span>
+                      )}
+                      {t.difficulty && (
+                        <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded-md tracking-wider ${difficultyColors[t.difficulty]}`}>
+                          {t.difficulty}
                         </span>
                       )}
                       {t.dueDate && (
