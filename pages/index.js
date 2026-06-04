@@ -29,13 +29,13 @@ export default function Home() {
           {/* Title Hero */}
           <div className="space-y-4">
             <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-[1.1] text-white">
-              Hierarchical Task Management, <br />
+              Hierarchical Task <br />
               <span className="bg-gradient-to-r from-indigo-400 via-indigo-500 to-cyan-400 bg-clip-text text-transparent">
-                Simplified and Beautiful
+                Management
               </span>
             </h2>
             <p className="text-base sm:text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed">
-              Plan and organise tasks of any complexity in a nested tree structure. Drag-and-drop to adjust scope, upload attachments, and track progress effortlessly on both desktop and mobile devices.
+              Organise tasks in a nested tree structure, adjust scope with drag-and-drop, and track progress.
             </p>
           </div>
 
@@ -60,7 +60,7 @@ export default function Home() {
               </div>
               <h3 className="text-base font-bold text-white">Hierarchical Trees</h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Build tasks inside tasks. Nest infinite levels of subtasks to capture details without cluttering your main view.
+                Nest tasks to any depth to keep your workspace structured.
               </p>
             </div>
 
@@ -72,7 +72,7 @@ export default function Home() {
               </div>
               <h3 className="text-base font-bold text-white">Drag & Drop</h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Quickly restructure priorities. Drag tasks to place them before, after, or inside other tasks dynamically.
+                Reorganise priorities and move tasks between groups.
               </p>
             </div>
 
@@ -84,7 +84,7 @@ export default function Home() {
               </div>
               <h3 className="text-base font-bold text-white">Responsive Display</h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                A dual-pane detail explorer on desktop monitors, morphing into convenient expandable accordions on mobile devices.
+                Dual-pane explorer optimized for both desktop and mobile screens.
               </p>
             </div>
 
