@@ -1184,7 +1184,7 @@ export default function Dashboard({ userEmail }) {
                     </div>
 
                     {/* Advanced Filter Bar */}
-                    <div className="bg-zinc-800/50 border border-zinc-700/80 p-4 rounded-xl space-y-3">
+                    <div className="bg-zinc-700/70 border border-zinc-500/80 p-4 rounded-xl space-y-3 shadow-md">
                       <div className="flex flex-wrap items-center gap-3">
                         {/* Search text (Title/Description) */}
                         <div className="flex-1 min-w-[200px] relative">
@@ -1197,7 +1197,7 @@ export default function Dashboard({ userEmail }) {
                             type="text"
                             value={filterText}
                             onChange={(e) => setFilterText(e.target.value)}
-                            className="w-full text-xs bg-zinc-950 border border-zinc-700/80 rounded-lg pl-9 pr-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition"
+                            className="w-full text-xs bg-zinc-800 border border-zinc-600/60 rounded-lg pl-9 pr-3 py-2 text-white placeholder-zinc-400 focus:outline-none focus:border-indigo-500 transition"
                             placeholder="Search tasks by title or description..."
                           />
                         </div>
@@ -1209,7 +1209,7 @@ export default function Dashboard({ userEmail }) {
                             type="date"
                             value={filterDueDate}
                             onChange={(e) => setFilterDueDate(e.target.value)}
-                            className="text-xs bg-zinc-950 border border-zinc-700/80 rounded-lg px-2 py-1.5 text-white focus:outline-none focus:border-indigo-500 transition"
+                            className="text-xs bg-zinc-800 border border-zinc-600/60 rounded-lg px-2 py-1.5 text-white focus:outline-none focus:border-indigo-500 transition"
                           />
                           {filterDueDate && (
                             <button
@@ -1230,7 +1230,7 @@ export default function Dashboard({ userEmail }) {
                             <select
                               value={filterPriority}
                               onChange={(e) => setFilterPriority(e.target.value)}
-                              className="text-xs bg-zinc-950 border border-zinc-700/80 rounded-lg px-2.5 py-1.5 text-zinc-300 focus:outline-none focus:border-indigo-500 transition"
+                              className="text-xs bg-zinc-800 border border-zinc-600/60 rounded-lg pl-2.5 pr-8 py-1.5 text-zinc-300 focus:outline-none focus:border-indigo-500 transition custom-select"
                             >
                               <option value="all">All Priorities</option>
                               <option value="low">Low</option>
@@ -1245,7 +1245,7 @@ export default function Dashboard({ userEmail }) {
                             <select
                               value={filterDifficulty}
                               onChange={(e) => setFilterDifficulty(e.target.value)}
-                              className="text-xs bg-zinc-950 border border-zinc-700/80 rounded-lg px-2.5 py-1.5 text-zinc-300 focus:outline-none focus:border-indigo-500 transition"
+                              className="text-xs bg-zinc-800 border border-zinc-600/60 rounded-lg pl-2.5 pr-8 py-1.5 text-zinc-300 focus:outline-none focus:border-indigo-500 transition custom-select"
                             >
                               <option value="all">All Difficulties</option>
                               <option value="low">Low</option>
@@ -1265,7 +1265,7 @@ export default function Dashboard({ userEmail }) {
                               if (val === 'all') setFilterAttachments('all')
                               else setFilterAttachments('has_attachments')
                             }}
-                            className="text-xs bg-zinc-950 border border-zinc-700/80 rounded-lg px-2 py-1.5 text-zinc-300 focus:outline-none focus:border-indigo-500 transition"
+                            className="text-xs bg-zinc-800 border border-zinc-600/60 rounded-lg pl-2.5 pr-8 py-1.5 text-zinc-300 focus:outline-none focus:border-indigo-500 transition custom-select"
                           >
                             <option value="all">All Tasks</option>
                             <option value="has_attachments">Has Attachments</option>
@@ -1280,7 +1280,7 @@ export default function Dashboard({ userEmail }) {
                                 const val = e.target.value
                                 setFilterAttachments(val ? `file:${val}` : 'has_attachments')
                               }}
-                              className="text-xs bg-zinc-950 border border-zinc-700/80 rounded-lg px-2 py-1 text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition w-32"
+                              className="text-xs bg-zinc-800 border border-zinc-600/60 rounded-lg px-2 py-1 text-white placeholder-zinc-400 focus:outline-none focus:border-indigo-500 transition w-32"
                               placeholder="Filename query..."
                             />
                           )}

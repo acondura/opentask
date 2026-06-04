@@ -24,3 +24,13 @@ body{ @apply bg-gradient-to-b from-slate-50 via-white to-slate-50 text-slate-900
 /* pill input */
 .pill { @apply px-4 py-2 rounded-full border bg-white/90 shadow-sm }
 
+/* Custom select dropdown arrow styling with correct right padding */
+.custom-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M7 9.5l3 3 3-3' stroke='%23a1a1aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 1.25rem 1.25rem;
+}
