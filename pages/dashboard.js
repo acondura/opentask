@@ -81,7 +81,7 @@ function toBase64(file) {
 }
 
 // Subcomponent for editing/displaying task details
-function TaskDetails({ task, projectId, onSave, onDelete, email }) {
+function TaskDetails({ task, projectId, onSave, onDelete, email, role }) {
   const [name, setName] = useState(task.name || '')
   const [description, setDescription] = useState(task.description || '')
   const [priority, setPriority] = useState(task.priority || 'low')
@@ -90,7 +90,11 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
   const [uploading, setUploading] = useState(false)
   const [saveStatus, setSaveStatus] = useState('')
   const [isEditingDesc, setIsEditingDesc] = useState(false)
+  const [newCommentText, setNewCommentText] = useState('')
   const fileInputRef = useRef(null)
+
+  const canEdit = role !== 'viewer'
+  const canDelete = role === 'owner' || role === 'admin'
 
   useEffect(() => {
     setName(task.name || '')
@@ -100,6 +104,7 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
     setDueDate(task.dueDate || '')
     setSaveStatus('')
     setIsEditingDesc(false)
+    setNewCommentText('')
   }, [task.id])
 
   const triggerSave = (updatedFields) => {
@@ -147,6 +152,19 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
     }
   }
 
+  const handleAddComment = () => {
+    if (!newCommentText.trim()) return
+    const comment = {
+      id: uid(),
+      author: email || 'anonymous@opentask.local',
+      text: newCommentText.trim(),
+      createdAt: new Date().toISOString()
+    }
+    const updatedComments = [...(task.comments || []), comment]
+    onSave({ comments: updatedComments })
+    setNewCommentText('')
+  }
+
   return (
     <div className="space-y-5 text-zinc-100">
       <div className="flex items-center justify-between border-b border-zinc-700 pb-3">
@@ -154,32 +172,37 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
           <input
             type="checkbox"
             checked={!!task.completed}
+            disabled={!canEdit}
             onChange={(e) => triggerSave({ completed: e.target.checked })}
-            className="w-5 h-5 rounded border-zinc-600 bg-zinc-700 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-zinc-800 transition"
+            className="w-5 h-5 rounded border-zinc-600 bg-zinc-700 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-zinc-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
           />
           <span className="text-xs text-zinc-300 font-mono">ID: {task.id}</span>
         </div>
         <div className="flex items-center gap-2">
           {saveStatus && <span className="text-xs text-emerald-400 font-medium">{saveStatus}</span>}
-          <button
-            onClick={onDelete}
-            className="p-1.5 rounded-lg text-zinc-300 hover:text-rose-400 hover:bg-zinc-700 transition"
-            title="Delete task"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          </button>
+          {canDelete && (
+            <button
+              onClick={onDelete}
+              className="p-1.5 rounded-lg text-zinc-300 hover:text-rose-400 hover:bg-zinc-700 transition"
+              title="Delete task"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
 
       <div className="space-y-1">
         <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Task Title</label>
         <input
+          id="task-title-input"
           value={name}
+          disabled={!canEdit}
           onChange={(e) => setName(e.target.value)}
-          onBlur={() => triggerSave({ name })}
-          className="w-full text-lg font-bold bg-zinc-700/50 border border-zinc-600/80 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500 transition"
+          onBlur={() => { if (canEdit) triggerSave({ name }) }}
+          className="w-full text-lg font-bold bg-zinc-700/50 border border-zinc-600/80 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500 transition disabled:opacity-75 disabled:cursor-not-allowed"
           placeholder="Enter task name..."
         />
       </div>
@@ -198,8 +221,9 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
               return (
                 <button
                   key={p}
-                  onClick={() => { setPriority(p); triggerSave({ priority: p }); }}
-                  className={`flex-1 text-xs font-medium py-1.5 px-2 border rounded-lg capitalize transition ${colors[p]}`}
+                  disabled={!canEdit}
+                  onClick={() => { if (canEdit) { setPriority(p); triggerSave({ priority: p }); } }}
+                  className={`flex-1 text-xs font-medium py-1.5 px-2 border rounded-lg capitalize transition disabled:cursor-not-allowed ${colors[p]}`}
                 >
                   {p}
                 </button>
@@ -221,8 +245,9 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
               return (
                 <button
                   key={d}
-                  onClick={() => { setDifficulty(d); triggerSave({ difficulty: d }); }}
-                  className={`flex-1 text-xs font-medium py-1.5 px-2 border rounded-lg capitalize transition ${colors[d]}`}
+                  disabled={!canEdit}
+                  onClick={() => { if (canEdit) { setDifficulty(d); triggerSave({ difficulty: d }); } }}
+                  className={`flex-1 text-xs font-medium py-1.5 px-2 border rounded-lg capitalize transition disabled:cursor-not-allowed ${colors[d]}`}
                 >
                   {d}
                 </button>
@@ -237,8 +262,9 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
         <input
           type="date"
           value={dueDate}
-          onChange={(e) => { setDueDate(e.target.value); triggerSave({ dueDate: e.target.value }); }}
-          className="w-full text-sm bg-zinc-700/50 border border-zinc-600/80 rounded-xl px-3 py-1.5 text-white focus:outline-none focus:border-indigo-500 transition"
+          disabled={!canEdit}
+          onChange={(e) => { if (canEdit) { setDueDate(e.target.value); triggerSave({ dueDate: e.target.value }); } }}
+          className="w-full text-sm bg-zinc-700/50 border border-zinc-600/80 rounded-xl px-3 py-1.5 text-white focus:outline-none focus:border-indigo-500 transition disabled:opacity-75 disabled:cursor-not-allowed"
         />
       </div>
 
@@ -259,8 +285,8 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
           />
         ) : (
           <div
-            onClick={() => setIsEditingDesc(true)}
-            className="w-full min-h-[100px] text-sm bg-zinc-950/40 border border-zinc-800/80 hover:border-zinc-700/80 rounded-xl px-3 py-2 text-zinc-300 cursor-pointer transition overflow-auto"
+            onClick={() => { if (canEdit) setIsEditingDesc(true) }}
+            className={`w-full min-h-[100px] text-sm bg-zinc-950/40 border border-zinc-800/80 rounded-xl px-3 py-2 text-zinc-300 transition overflow-auto ${canEdit ? 'hover:border-zinc-700/80 cursor-pointer' : 'cursor-default'}`}
           >
             {description ? (
               <div 
@@ -268,7 +294,9 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(description) }}
               />
             ) : (
-              <span className="text-zinc-500 italic text-xs">Add details, updates, or notes (Markdown supported)... Click to edit.</span>
+              <span className="text-zinc-500 italic text-xs">
+                {canEdit ? 'Add details, updates, or notes (Markdown supported)... Click to edit.' : 'No description provided.'}
+              </span>
             )}
           </div>
         )}
@@ -277,15 +305,17 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Attachments</label>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="text-xs text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1 transition"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-            </svg>
-            Attach File
-          </button>
+          {canEdit && (
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="text-xs text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1 transition"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+              </svg>
+              Attach File
+            </button>
+          )}
           <input
             ref={fileInputRef}
             type="file"
@@ -332,17 +362,76 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
         </div>
       </div>
 
-      <div className="pt-2 flex justify-end">
-        <button
-          onClick={handleSave}
-          className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2 px-4 rounded-xl shadow-lg shadow-indigo-600/20 transition flex items-center justify-center gap-2"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-          </svg>
-          Save Changes
-        </button>
+      {/* Comments Section */}
+      <div className="space-y-3 border-t border-zinc-700/80 pt-4">
+        <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider block">Comments</label>
+        
+        {/* Comments List */}
+        <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+          {task.comments && task.comments.length > 0 ? (
+            task.comments.map((comment) => (
+              <div key={comment.id} className="bg-zinc-900/40 border border-zinc-800 p-2.5 rounded-xl space-y-1">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="w-5 h-5 rounded-full bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 font-bold text-[10px] uppercase flex-shrink-0">
+                      {comment.author ? comment.author[0] : 'U'}
+                    </div>
+                    <span className="text-[10px] font-semibold text-zinc-200 truncate" title={comment.author}>
+                      {comment.author}
+                    </span>
+                  </div>
+                  <span className="text-[9px] text-zinc-400 font-mono">
+                    {new Date(comment.createdAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap pl-6">
+                  {comment.text}
+                </p>
+              </div>
+            ))
+          ) : (
+            <div className="text-xs text-zinc-500 italic text-center py-3 bg-zinc-900/10 border border-dashed border-zinc-800/80 rounded-xl">
+              No comments yet.
+            </div>
+          )}
+        </div>
+
+        {/* Add Comment Input */}
+        {canEdit && (
+          <div className="space-y-2 pt-1.5">
+            <textarea
+              value={newCommentText}
+              onChange={(e) => setNewCommentText(e.target.value)}
+              placeholder="Write a comment..."
+              rows={2}
+              className="w-full text-xs bg-zinc-950 border border-zinc-700/80 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500 transition resize-none"
+            />
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={handleAddComment}
+                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition shadow shadow-indigo-600/10"
+              >
+                Add Comment
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {canEdit && (
+        <div className="pt-2 flex justify-end">
+          <button
+            onClick={handleSave}
+            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2 px-4 rounded-xl shadow-lg shadow-indigo-600/20 transition flex items-center justify-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+            </svg>
+            Save Changes
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -353,6 +442,12 @@ export default function Dashboard({ userEmail }) {
   const [emailInput, setEmailInput] = useState('')
   const [loginError, setLoginError] = useState('')
   const [isMobile, setIsMobile] = useState(false)
+  const [showShareModal, setShowShareModal] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState('viewer')
+  const [shareUpdating, setShareUpdating] = useState(false)
+  const [shareError, setShareError] = useState('')
+  const [shareSuccess, setShareSuccess] = useState('')
 
   useEffect(() => {
     setMounted(true)
@@ -489,6 +584,8 @@ export default function Dashboard({ userEmail }) {
   }, [selectedProjectId])
 
   const currentProject = projects.find(p => p.id === selectedProjectId) || null
+  const canEdit = currentProject?.role !== 'viewer'
+  const canDelete = currentProject?.role === 'owner' || currentProject?.role === 'admin'
 
   // Desktop Detail View defaults to the first task if not set
   const getFirstTask = (list) => {
@@ -527,6 +624,139 @@ export default function Dashboard({ userEmail }) {
     })
     if (selectedProjectId === id) {
       setSelectedProjectId(null)
+    }
+  }
+
+  const handleInviteCollaborator = async (e) => {
+    e.preventDefault()
+    if (!inviteEmail.trim() || shareUpdating) return
+    const targetEmail = inviteEmail.trim().toLowerCase()
+
+    if (targetEmail === activeEmail) {
+      setShareError("You are already the owner of this workspace")
+      return
+    }
+
+    setShareUpdating(true)
+    setShareError('')
+    setShareSuccess('')
+
+    try {
+      const updatedCollaborators = {
+        ...(currentProject.collaborators || {}),
+        [targetEmail]: inviteRole
+      }
+
+      const res = await fetch('/api/kv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_collaborators',
+          projectId: currentProject.id,
+          collaborators: updatedCollaborators,
+          owner: activeEmail
+        })
+      })
+
+      if (res.ok) {
+        setShareSuccess(`Successfully added ${targetEmail} as a ${inviteRole}!`)
+        setInviteEmail('')
+        setProjects(prev => prev.map(p => {
+          if (p.id === currentProject.id) {
+            return { ...p, collaborators: updatedCollaborators }
+          }
+          return p
+        }))
+      } else {
+        const err = await res.json()
+        setShareError(err.error || 'Failed to update collaborators')
+      }
+    } catch (err) {
+      setShareError('Failed to invite collaborator due to a network error')
+    } finally {
+      setShareUpdating(false)
+    }
+  }
+
+  const handleUpdateCollabRole = async (email, role) => {
+    if (shareUpdating) return
+    setShareUpdating(true)
+    setShareError('')
+    setShareSuccess('')
+
+    try {
+      const updatedCollaborators = {
+        ...(currentProject.collaborators || {}),
+        [email]: role
+      }
+
+      const res = await fetch('/api/kv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_collaborators',
+          projectId: currentProject.id,
+          collaborators: updatedCollaborators,
+          owner: activeEmail
+        })
+      })
+
+      if (res.ok) {
+        setShareSuccess(`Successfully updated ${email}'s role to ${role}`)
+        setProjects(prev => prev.map(p => {
+          if (p.id === currentProject.id) {
+            return { ...p, collaborators: updatedCollaborators }
+          }
+          return p
+        }))
+      } else {
+        const err = await res.json()
+        setShareError(err.error || 'Failed to update collaborator role')
+      }
+    } catch (err) {
+      setShareError('Failed to update role due to a network error')
+    } finally {
+      setShareUpdating(false)
+    }
+  }
+
+  const handleRemoveCollaborator = async (email) => {
+    if (shareUpdating || !confirm(`Remove ${email} from this project?`)) return
+    setShareUpdating(true)
+    setShareError('')
+    setShareSuccess('')
+
+    try {
+      const updatedCollaborators = { ...(currentProject.collaborators || {}) }
+      delete updatedCollaborators[email]
+
+      const res = await fetch('/api/kv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_collaborators',
+          projectId: currentProject.id,
+          collaborators: updatedCollaborators,
+          owner: activeEmail
+        })
+      })
+
+      if (res.ok) {
+        setShareSuccess(`Successfully removed ${email}`)
+        setProjects(prev => prev.map(p => {
+          if (p.id === currentProject.id) {
+            return { ...p, collaborators: updatedCollaborators }
+          }
+          return p
+        }))
+      } else {
+        const err = await res.json()
+        setShareError(err.error || 'Failed to remove collaborator')
+      }
+    } catch (err) {
+      setShareError('Failed to remove collaborator due to a network error')
+    } finally {
+      setShareUpdating(false)
     }
   }
 
@@ -760,6 +990,9 @@ export default function Dashboard({ userEmail }) {
   }
 
   function renderTasks(projectId, tasks, depth = 0) {
+    const canEdit = currentProject?.role !== 'viewer'
+    const canDelete = currentProject?.role === 'owner' || currentProject?.role === 'admin'
+
     return (
       <ul className={`${depth ? 'pl-5 border-l border-zinc-700/80 ml-2.5' : ''}`}>
         {tasks.map(t => {
@@ -800,11 +1033,11 @@ export default function Dashboard({ userEmail }) {
             <li
               key={t.id}
               className={`rounded-none border-b border-zinc-700/80 last:border-b-0 ${dragStyle} transition-all duration-200 group ${bgStyle}`}
-              draggable
-              onDragStart={(e) => onDragStart(e, projectId, t.id)}
-              onDragOver={(e) => onDragOver(e, projectId, t.id)}
-              onDragLeave={onDragLeave}
-              onDrop={(e) => onDrop(e, projectId, t.id)}
+              draggable={canEdit}
+              onDragStart={(e) => { if (canEdit) onDragStart(e, projectId, t.id) }}
+              onDragOver={(e) => { if (canEdit) onDragOver(e, projectId, t.id) }}
+              onDragLeave={canEdit ? onDragLeave : undefined}
+              onDrop={(e) => { if (canEdit) onDrop(e, projectId, t.id) }}
             >
               {/* Task Row Header */}
               <div
@@ -826,12 +1059,13 @@ export default function Dashboard({ userEmail }) {
                     <input
                       type="checkbox"
                       checked={!!t.completed}
+                      disabled={!canEdit}
                       onChange={(e) => {
                         e.stopPropagation()
                         handleUpdateTask(t.id, { completed: e.target.checked })
                       }}
                       onClick={(e) => e.stopPropagation()}
-                      className="w-4.5 h-4.5 rounded border-zinc-600 bg-zinc-700 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-zinc-800 transition"
+                      className="w-4.5 h-4.5 rounded border-zinc-600 bg-zinc-700 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-zinc-800 transition disabled:opacity-50"
                     />
                   </div>
 
@@ -844,25 +1078,50 @@ export default function Dashboard({ userEmail }) {
 
                 {/* Task Hover buttons */}
                 <div className="flex items-center gap-1.5 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity ml-2">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); openAddTaskModal(projectId, t.id) }}
-                    className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-zinc-400 hover:text-white hover:bg-zinc-700 transition"
-                    title="Add Subtask"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
-                    </svg>
-                    <span>Add subtask</span>
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDeleteTask(t.id) }}
-                    className="hidden lg:inline-block p-1 rounded-md text-zinc-300 hover:text-rose-400 hover:bg-zinc-600 transition"
-                    title="Delete Task"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedTaskId(t.id);
+                        setTimeout(() => {
+                          const titleInput = document.getElementById('task-title-input');
+                          if (titleInput) {
+                            titleInput.focus();
+                            titleInput.select();
+                          }
+                        }, 50);
+                      }}
+                      className="p-1 rounded-md text-zinc-300 hover:text-indigo-400 hover:bg-zinc-600 transition"
+                      title="Edit Task Details"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                  )}
+                  {canEdit && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openAddTaskModal(projectId, t.id) }}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-zinc-400 hover:text-white hover:bg-zinc-700 transition"
+                      title="Add Subtask"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
+                      </svg>
+                      <span>Add subtask</span>
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDeleteTask(t.id) }}
+                      className="hidden lg:inline-block p-1 rounded-md text-zinc-300 hover:text-rose-400 hover:bg-zinc-600 transition"
+                      title="Delete Task"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -875,6 +1134,7 @@ export default function Dashboard({ userEmail }) {
                     onSave={(fields) => handleUpdateTask(t.id, fields)}
                     onDelete={() => handleDeleteTask(t.id)}
                     email={activeEmail}
+                    role={currentProject?.role || 'viewer'}
                   />
                 </div>
               )}
@@ -985,15 +1245,17 @@ export default function Dashboard({ userEmail }) {
                         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${isProjSelected ? 'bg-indigo-500/20 text-indigo-300' : 'bg-zinc-700 text-zinc-400'}`}>
                           {p.tasks?.length || 0}
                         </span>
-                        <button
-                          onClick={(e) => deleteProject(p.id, e)}
-                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-rose-400 transition"
-                          title="Delete project"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
+                        {p.role === 'owner' && (
+                          <button
+                            onClick={(e) => deleteProject(p.id, e)}
+                            className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-rose-400 transition"
+                            title="Delete project"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        )}
                       </div>
                     </div>
                   )
@@ -1050,21 +1312,40 @@ export default function Dashboard({ userEmail }) {
             <>
               {/* Project Title Bar / Top Nav */}
               <header className="h-16 border-b border-zinc-700/80 px-6 flex items-center bg-zinc-800/20 backdrop-blur-md">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setSelectedProjectId(null)}
-                    className="p-2 -ml-2 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-700 transition lg:hidden"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-                    </svg>
-                  </button>
-                  <div>
-                    <h2 className="text-base font-bold text-white flex items-center gap-2">
-                      {currentProject.title}
-                    </h2>
-                    <span className="text-[10px] text-zinc-300 font-mono">Project ID: {currentProject.id}</span>
+                <div className="flex items-center justify-between w-full">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setSelectedProjectId(null)}
+                      className="p-2 -ml-2 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-700 transition lg:hidden"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    <div>
+                      <h2 className="text-base font-bold text-white flex items-center gap-2 animate-fadeIn">
+                        {currentProject.title}
+                        <span className="text-[9px] font-semibold px-2.5 py-0.5 rounded-full bg-zinc-700 text-zinc-300 border border-zinc-600 uppercase tracking-wider">
+                          {currentProject.role || 'viewer'}
+                        </span>
+                      </h2>
+                      <span className="text-[10px] text-zinc-300 font-mono">Project ID: {currentProject.id}</span>
+                    </div>
                   </div>
+
+                  <button
+                    onClick={() => {
+                      setShareError('')
+                      setShareSuccess('')
+                      setShowShareModal(true)
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-zinc-700 hover:border-zinc-600 bg-zinc-800/50 hover:bg-zinc-700/50 text-zinc-200 text-xs font-semibold transition"
+                  >
+                    <svg className="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    {currentProject.role === 'owner' || currentProject.role === 'admin' ? 'Share Workspace' : 'Collaborators'}
+                  </button>
                 </div>
               </header>
 
@@ -1077,15 +1358,17 @@ export default function Dashboard({ userEmail }) {
                     <div className="flex items-center justify-between border-b border-zinc-700 pb-3">
                       <div className="flex items-center gap-3.5">
                         <h3 className="text-xs font-bold text-zinc-300 uppercase tracking-widest">Tasks Tree</h3>
-                        <button
-                          onClick={() => openAddTaskModal(currentProject.id)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-lg shadow-indigo-600/20 transition"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
-                          </svg>
-                          New Task
-                        </button>
+                        {canEdit && (
+                          <button
+                            onClick={() => openAddTaskModal(currentProject.id)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-lg shadow-indigo-600/20 transition"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
+                            </svg>
+                            New Task
+                          </button>
+                        )}
                       </div>
                       <span className="text-xs text-zinc-400 font-medium">Drag to reorder hierarchy</span>
                     </div>
@@ -1253,12 +1536,14 @@ export default function Dashboard({ userEmail }) {
                           </svg>
                           <p className="text-sm font-semibold text-zinc-300">No tasks in this project yet</p>
                           <p className="text-xs text-zinc-400 mt-1 max-w-[240px] mx-auto">Create a parent task to start planning your workflow.</p>
-                          <button
-                            onClick={() => openAddTaskModal(currentProject.id)}
-                            className="mt-4 inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 font-semibold border border-indigo-500/20 bg-indigo-500/5 px-3 py-1.5 rounded-lg transition"
-                          >
-                            Add First Task
-                          </button>
+                          {canEdit && (
+                            <button
+                              onClick={() => openAddTaskModal(currentProject.id)}
+                              className="mt-4 inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 font-semibold border border-indigo-500/20 bg-indigo-500/5 px-3 py-1.5 rounded-lg transition"
+                            >
+                              Add First Task
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1394,6 +1679,127 @@ export default function Dashboard({ userEmail }) {
               >
                 Create Task
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Share / Collaborators Modal */}
+      {showShareModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/80 backdrop-blur-sm p-4">
+          <div className="bg-zinc-800 border border-zinc-700 w-full max-w-lg rounded-2xl shadow-2xl p-6 text-zinc-100 animate-fadeIn">
+            <div className="flex items-center justify-between border-b border-zinc-700 pb-3">
+              <h4 className="text-lg font-bold text-white flex items-center gap-2">
+                <svg className="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Workspace Collaborators
+              </h4>
+              <button
+                onClick={() => {
+                  setShowShareModal(false)
+                  setShareError('')
+                  setShareSuccess('')
+                }}
+                className="p-1 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-700 transition"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="mt-4 space-y-4">
+              <div className="text-xs text-zinc-400 leading-relaxed">
+                Project Owner: <span className="font-semibold text-zinc-200">{currentProject?.owner}</span>
+              </div>
+
+              {/* Add Collaborator Form (Only visible to owners and admins) */}
+              {(currentProject?.role === 'owner' || currentProject?.role === 'admin') && (
+                <form onSubmit={handleInviteCollaborator} className="bg-zinc-900/30 border border-zinc-700/60 p-3.5 rounded-xl space-y-3">
+                  <span className="text-xs font-bold text-zinc-300 uppercase tracking-wider block">Add Collaborator</span>
+                  <div className="flex gap-2">
+                    <input
+                      type="email"
+                      required
+                      placeholder="collab@example.com"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      className="flex-1 text-xs bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-400 focus:outline-none focus:border-indigo-500"
+                    />
+                    <select
+                      value={inviteRole}
+                      onChange={(e) => setInviteRole(e.target.value)}
+                      className="text-xs bg-zinc-950 border border-zinc-700 rounded-lg px-2.5 py-2 text-white focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value="viewer">Viewer</option>
+                      <option value="editor">Editor</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                    <button
+                      type="submit"
+                      disabled={shareUpdating}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-semibold text-xs shadow-lg shadow-indigo-600/10 transition"
+                    >
+                      {shareUpdating ? 'Adding...' : 'Add'}
+                    </button>
+                  </div>
+                  {shareError && <p className="text-[11px] text-rose-400">{shareError}</p>}
+                  {shareSuccess && <p className="text-[11px] text-emerald-400">{shareSuccess}</p>}
+                </form>
+              )}
+
+              {/* Collaborators List */}
+              <div className="space-y-2">
+                <span className="text-xs font-bold text-zinc-300 uppercase tracking-wider block">Current Collaborators</span>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {currentProject && Object.keys(currentProject.collaborators || {}).length > 0 ? (
+                    Object.entries(currentProject.collaborators).map(([email, role]) => {
+                      const isOwnerOrAdmin = currentProject.role === 'owner' || currentProject.role === 'admin'
+                      return (
+                        <div key={email} className="flex items-center justify-between bg-zinc-900/40 border border-zinc-800 px-3 py-2.5 rounded-xl text-xs">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-6 h-6 rounded-full bg-indigo-600/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold uppercase text-[10px]">
+                              {email[0]}
+                            </div>
+                            <span className="truncate text-zinc-200" title={email}>{email}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {isOwnerOrAdmin ? (
+                              <>
+                                <select
+                                  value={role}
+                                  onChange={(e) => handleUpdateCollabRole(email, e.target.value)}
+                                  disabled={shareUpdating}
+                                  className="text-[11px] bg-zinc-950 border border-zinc-700 rounded-md px-1.5 py-1 text-zinc-300 focus:outline-none"
+                                >
+                                  <option value="viewer">Viewer</option>
+                                  <option value="editor">Editor</option>
+                                  <option value="admin">Admin</option>
+                                </select>
+                                <button
+                                  onClick={() => handleRemoveCollaborator(email)}
+                                  disabled={shareUpdating}
+                                  className="p-1 rounded text-zinc-400 hover:text-rose-400 hover:bg-zinc-700 transition"
+                                  title="Remove collaborator"
+                                >
+                                  ✕
+                                </button>
+                              </>
+                            ) : (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-400 uppercase tracking-wider">
+                                {role}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })
+                  ) : (
+                    <div className="text-xs text-zinc-500 italic text-center py-4 bg-zinc-900/10 border border-dashed border-zinc-800 rounded-xl">
+                      No other collaborators have been added yet.
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>

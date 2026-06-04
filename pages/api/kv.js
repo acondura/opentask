@@ -2,17 +2,30 @@
 // This endpoint expects to run on an environment that binds CLOUDFLARE_KV to a KV namespace.
 
 export default async function handler(req) {
-  // Bindings: In Cloudflare Pages/Workers, bind your KV namespace to the name CLOUDFLARE_KV
-  // In Next-on-Pages or local dev, process.env.CLOUDFLARE_KV may hold a JSON string with methods mocked.
-  // Prefer the binding name 'opentask' if you bound KV to that variable in Pages.
-  const KV = globalThis?.CLOUDFLARE_KV || globalThis?.opentask || process.env.CLOUDFLARE_KV
+  let KV = globalThis?.CLOUDFLARE_KV || globalThis?.opentask || process.env.CLOUDFLARE_KV
+
+  // Local development fallback to in-memory KV store if binding is missing
+  if (!KV) {
+    globalThis.__localMockStore = globalThis.__localMockStore || {}
+    KV = {
+      get: async (key) => globalThis.__localMockStore[key] || null,
+      put: async (key, val) => { globalThis.__localMockStore[key] = String(val) },
+      delete: async (key) => { delete globalThis.__localMockStore[key] },
+      list: async (options) => {
+        const prefix = options?.prefix || ''
+        const keys = Object.keys(globalThis.__localMockStore)
+          .filter(k => k.startsWith(prefix))
+          .map(k => ({ name: k }))
+        return { keys }
+      }
+    }
+  }
 
   // Edge-compatible base64url decode
   function base64UrlDecodeToJson(payload) {
     try {
       let str = payload.replace(/-/g, '+').replace(/_/g, '/')
       while (str.length % 4) str += '='
-      // atob -> binary string; decode percent-encoding to get UTF-8
       const binary = typeof atob === 'function' ? atob(str) : Buffer.from(str, 'base64').toString('binary')
       const json = decodeURIComponent(Array.prototype.map.call(binary, c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''))
       return JSON.parse(json)
@@ -53,7 +66,6 @@ export default async function handler(req) {
       const val = getHeader(req, name)
       if (val) return Array.isArray(val) ? val[0] : val
     }
-    // try JWT headers
     const jwtNames = ['cf-access-jwt-assertion', 'cf-access-jwt', 'x-forwarded-jwt', 'authorization']
     for (const name of jwtNames) {
       const jwt = getHeader(req, name)
@@ -64,7 +76,6 @@ export default async function handler(req) {
         if (email) return email
       }
     }
-    // fallback to query param for local testing
     if (req.url) {
       try {
         const url = new URL(req.url, 'http://localhost')
@@ -75,60 +86,125 @@ export default async function handler(req) {
     return null
   }
 
-  const owner = ownerFromReq(req)
-  // We'll store every task under keys like: <owner>:project:<projectId>:task:<taskId>
-  const PREFIX = (owner ? `${owner}:project:` : 'public:project:')
+  const requesterEmail = ownerFromReq(req)
+  if (!requesterEmail) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
+  }
+
+  // Get user shares helper
+  async function getShares(email) {
+    if (!KV || !KV.get) return []
+    const val = await KV.get(`shares:${email}`)
+    return val ? JSON.parse(val) : []
+  }
+
+  // Save user shares helper
+  async function saveShares(email, shares) {
+    if (!KV || !KV.put) return
+    await KV.put(`shares:${email}`, JSON.stringify(shares))
+  }
 
   if (req.method === 'GET') {
     try {
-      if (KV && KV.list) {
-        // list all project:task keys for this owner
-        const listRes = await KV.list({ prefix: PREFIX })
-        const keys = listRes.keys.map(k => k.name)
-        const values = await Promise.all(keys.map(k => KV.get(k)))
-        // parse values (expecting JSON per-task with {id, name, parentId, projectId, childrenIds})
-        const tasks = []
-        for (let i = 0; i < keys.length; i++) {
-          try {
-            const v = values[i]
-            const parsed = v ? JSON.parse(v) : null
-            if (parsed) tasks.push(parsed)
-          } catch (e) { }
-        }
-
-        // group by project and assemble trees
+      if (KV && KV.list && KV.get) {
         const projectsMap = {}
-        for (const t of tasks) {
-          const pid = t.projectId || 'default'
-          projectsMap[pid] = projectsMap[pid] || { id: pid, title: pid, tasks: [] }
-          projectsMap[pid]._tasks = projectsMap[pid]._tasks || {}
-          projectsMap[pid]._tasks[t.id] = { ...t, children: [] }
+
+        // 1. Fetch owned projects index
+        const ownedIndexPrefix = `${requesterEmail}:project-index:`
+        const ownedIndexRes = await KV.list({ prefix: ownedIndexPrefix })
+        const ownedProjectIds = ownedIndexRes.keys.map(k => k.name.replace(ownedIndexPrefix, ''))
+
+        // Fetch meta and tasks for owned projects
+        for (const pid of ownedProjectIds) {
+          let meta = null
+          const metaVal = await KV.get(`project-meta:${pid}`)
+          if (metaVal) {
+            meta = JSON.parse(metaVal)
+          } else {
+            // Auto-migration for existing projects without metadata
+            meta = {
+              id: pid,
+              title: pid, // fallback to id
+              owner: requesterEmail,
+              collaborators: {}
+            }
+            await KV.put(`project-meta:${pid}`, JSON.stringify(meta))
+          }
+
+          // List and fetch all tasks for this project
+          const taskPrefix = `${requesterEmail}:project:${pid}:task:`
+          const taskListRes = await KV.list({ prefix: taskPrefix })
+          const taskKeys = taskListRes.keys.map(k => k.name)
+          const taskVals = await Promise.all(taskKeys.map(k => KV.get(k)))
+          const tasks = taskVals.map(v => v ? JSON.parse(v) : null).filter(Boolean)
+
+          projectsMap[pid] = {
+            id: pid,
+            title: meta.title || pid,
+            owner: requesterEmail,
+            role: 'owner',
+            collaborators: meta.collaborators || {},
+            tasks: tasks
+          }
         }
 
-        // link children by parentId
+        // 2. Fetch shared projects index
+        const shares = await getShares(requesterEmail)
+        for (const share of shares) {
+          const { owner: projectOwner, projectId: pid, role } = share
+          const metaVal = await KV.get(`project-meta:${pid}`)
+          if (!metaVal) continue // project deleted
+          const meta = JSON.parse(metaVal)
+
+          // Fetch tasks from owner's namespace
+          const taskPrefix = `${projectOwner}:project:${pid}:task:`
+          const taskListRes = await KV.list({ prefix: taskPrefix })
+          const taskKeys = taskListRes.keys.map(k => k.name)
+          const taskVals = await Promise.all(taskKeys.map(k => KV.get(k)))
+          const tasks = taskVals.map(v => v ? JSON.parse(v) : null).filter(Boolean)
+
+          projectsMap[pid] = {
+            id: pid,
+            title: meta.title || pid,
+            owner: projectOwner,
+            role: role,
+            collaborators: meta.collaborators || {},
+            tasks: tasks
+          }
+        }
+
+        // 3. Assemble task trees for each project
+        const finalProjects = []
         for (const pid of Object.keys(projectsMap)) {
-          const map = projectsMap[pid]._tasks
-          for (const id of Object.keys(map)) {
-            const node = map[id]
-            if (node.parentId) {
-              const parent = map[node.parentId]
-              if (parent) parent.children.push(node)
+          const proj = projectsMap[pid]
+          const tasks = proj.tasks
+
+          const taskNodeMap = {}
+          for (const t of tasks) {
+            taskNodeMap[t.id] = { ...t, children: [] }
+          }
+
+          for (const id of Object.keys(taskNodeMap)) {
+            const node = taskNodeMap[id]
+            if (node.parentId && taskNodeMap[node.parentId]) {
+              taskNodeMap[node.parentId].children.push(node)
             }
           }
-          // collect top-level tasks
-          const top = []
-          for (const id of Object.keys(map)) {
-            if (!map[id].parentId) top.push(map[id])
+
+          const topLevelTasks = []
+          for (const id of Object.keys(taskNodeMap)) {
+            if (!taskNodeMap[id].parentId) {
+              topLevelTasks.push(taskNodeMap[id])
+            }
           }
-          projectsMap[pid].tasks = top
-          // cleanup helper
-          delete projectsMap[pid]._tasks
+
+          proj.tasks = topLevelTasks
+          finalProjects.push(proj)
         }
 
-        const projects = Object.values(projectsMap)
-        return new Response(JSON.stringify(projects), { status: 200, headers: { 'Content-Type': 'application/json' } })
+        return new Response(JSON.stringify(finalProjects), { status: 200, headers: { 'Content-Type': 'application/json' } })
       }
-      return new Response(JSON.stringify(null), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } })
     } catch (e) {
       return new Response(JSON.stringify({ error: String(e) }), { status: 500, headers: { 'Content-Type': 'application/json' } })
     }
@@ -144,48 +220,191 @@ export default async function handler(req) {
           body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
         }
       } catch (err) {}
-      const data = body.data || null
-      // If client posts full projects array (data), we'll upsert per-task keys and remove stale keys
-      if (Array.isArray(data) && KV && KV.put && KV.list && KV.get && KV.delete) {
-        const desiredKeys = new Set()
-        // collect tasks
+
+      const { action, projectId, collaborators, data } = body
+
+      // A. Collaborators management action
+      if (action === 'update_collaborators') {
+        if (!projectId || !collaborators) {
+          return new Response(JSON.stringify({ error: 'Missing parameters' }), { status: 400, headers: { 'Content-Type': 'application/json' } })
+        }
+
+        const metaVal = await KV.get(`project-meta:${projectId}`)
+        if (!metaVal) {
+          return new Response(JSON.stringify({ error: 'Project not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } })
+        }
+        const meta = JSON.parse(metaVal)
+
+        // Verify if requester is owner or admin
+        const requesterRole = meta.owner === requesterEmail ? 'owner' : (meta.collaborators?.[requesterEmail] || null)
+        if (requesterRole !== 'owner' && requesterRole !== 'admin') {
+          return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { 'Content-Type': 'application/json' } })
+        }
+
+        const oldCollaborators = meta.collaborators || {}
+        const newCollaborators = collaborators
+
+        // Process removals
+        for (const email of Object.keys(oldCollaborators)) {
+          if (!newCollaborators[email]) {
+            const collabShares = await getShares(email)
+            const updatedShares = collabShares.filter(s => s.projectId !== projectId)
+            await saveShares(email, updatedShares)
+          }
+        }
+
+        // Process additions & updates
+        for (const [email, role] of Object.entries(newCollaborators)) {
+          const collabShares = await getShares(email)
+          const cleanShares = collabShares.filter(s => s.projectId !== projectId)
+          cleanShares.push({ owner: meta.owner, projectId, role })
+          await saveShares(email, cleanShares)
+        }
+
+        // Save updated metadata
+        meta.collaborators = newCollaborators
+        await KV.put(`project-meta:${projectId}`, JSON.stringify(meta))
+
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+
+      // B. General project array save
+      if (Array.isArray(data)) {
+        if (!KV || !KV.put || !KV.list || !KV.delete) {
+          return new Response(JSON.stringify({ error: 'KV methods unavailable' }), { status: 500, headers: { 'Content-Type': 'application/json' } })
+        }
+
+        // Get existing projects index for this user
+        const ownedIndexPrefix = `${requesterEmail}:project-index:`
+        const ownedIndexRes = await KV.list({ prefix: ownedIndexPrefix })
+        const existingProjectIds = ownedIndexRes.keys.map(k => k.name.replace(ownedIndexPrefix, ''))
+
+        const desiredProjectIds = new Set(data.map(p => p.id))
+
+        // Create new projects index/meta & upsert tasks
         for (const proj of data) {
-          const projectId = proj.id || proj.title || 'default'
-          function walk(task, parentId = null) {
-            const key = `${PREFIX}${projectId}:task:${task.id}`
-            desiredKeys.add(key)
+          const pid = proj.id
+          
+          // Verify role permission: if it exists, only allow edit/save if role is owner, admin, or editor
+          const metaVal = await KV.get(`project-meta:${pid}`)
+          let meta = null
+          if (metaVal) {
+            meta = JSON.parse(metaVal)
+            const requesterRole = meta.owner === requesterEmail ? 'owner' : (meta.collaborators?.[requesterEmail] || null)
+            if (!requesterRole || requesterRole === 'viewer') {
+              // Skip saving this project if unauthorized (just in case)
+              continue
+            }
+          } else {
+            // New project creation
+            meta = {
+              id: pid,
+              title: proj.title,
+              owner: requesterEmail,
+              collaborators: {}
+            }
+            await KV.put(`project-meta:${pid}`, JSON.stringify(meta))
+            await KV.put(`${requesterEmail}:project-index:${pid}`, JSON.stringify({ id: pid }))
+          }
+
+          // If title changed, update metadata
+          if (meta.title !== proj.title) {
+            meta.title = proj.title
+            await KV.put(`project-meta:${pid}`, JSON.stringify(meta))
+          }
+
+          const projectOwner = meta.owner
+          const desiredTaskKeys = new Set()
+
+          // Walk tasks and write under the owner's namespace
+          async function walk(task, parentId = null) {
+            const key = `${projectOwner}:project:${pid}:task:${task.id}`
+            desiredTaskKeys.add(key)
             const { children, ...rest } = task
             const value = {
               ...rest,
               id: task.id,
               name: task.name || task.title || '',
               parentId,
-              projectId,
+              projectId: pid,
               childrenIds: (children || []).map(c => c.id)
             }
-            // store
-            KV.put(key, JSON.stringify(value))
-            ; (children || []).forEach(child => walk(child, task.id))
+            await KV.put(key, JSON.stringify(value))
+            if (children && children.length) {
+              for (const child of children) {
+                await walk(child, task.id)
+              }
+            }
           }
-          ; (proj.tasks || []).forEach(t => walk(t, null))
+
+          if (proj.tasks && proj.tasks.length) {
+            for (const t of proj.tasks) {
+              await walk(t, null)
+            }
+          }
+
+          // Delete tasks that were removed from this project (under projectOwner prefix)
+          const projectTaskPrefix = `${projectOwner}:project:${pid}:task:`
+          const existingTasksRes = await KV.list({ prefix: projectTaskPrefix })
+          for (const k of existingTasksRes.keys) {
+            if (!desiredTaskKeys.has(k.name)) {
+              await KV.delete(k.name)
+            }
+          }
         }
 
-        // remove stale keys
-        const existing = await KV.list({ prefix: PREFIX })
-        const deletes = []
-        for (const k of existing.keys) {
-          if (!desiredKeys.has(k.name)) deletes.push(KV.delete(k.name))
+        // Handle deletion of projects owned by this user
+        for (const pid of existingProjectIds) {
+          if (!desiredProjectIds.has(pid)) {
+            // 1. Delete all tasks under owner's project namespace
+            const projectTaskPrefix = `${requesterEmail}:project:${pid}:task:`
+            const taskListRes = await KV.list({ prefix: projectTaskPrefix })
+            for (const k of taskListRes.keys) {
+              await KV.delete(k.name)
+            }
+
+            // 2. Remove project shares from all collaborators
+            const metaVal = await KV.get(`project-meta:${pid}`)
+            if (metaVal) {
+              const meta = JSON.parse(metaVal)
+              const collabs = Object.keys(meta.collaborators || {})
+              for (const email of collabs) {
+                const collabShares = await getShares(email)
+                const updatedShares = collabShares.filter(s => s.projectId !== pid)
+                await saveShares(email, updatedShares)
+              }
+            }
+
+            // 3. Delete metadata & index key
+            await KV.delete(`project-meta:${pid}`)
+            await KV.delete(`${requesterEmail}:project-index:${pid}`)
+          }
         }
-        await Promise.all(deletes)
+
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
       }
-      // fallback: single-task upsert
-      if (data && data.id && data.projectId && KV && KV.put) {
-        const key = `${PREFIX}${data.projectId}:task:${data.id}`
+
+      // C. Single task upsert
+      if (data && data.id && data.projectId) {
+        const pid = data.projectId
+        const metaVal = await KV.get(`project-meta:${pid}`)
+        if (!metaVal) {
+          return new Response(JSON.stringify({ error: 'Project not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } })
+        }
+        const meta = JSON.parse(metaVal)
+        const requesterRole = meta.owner === requesterEmail ? 'owner' : (meta.collaborators?.[requesterEmail] || null)
+
+        if (!requesterRole || requesterRole === 'viewer') {
+          return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { 'Content-Type': 'application/json' } })
+        }
+
+        // Save under project owner's namespace
+        const key = `${meta.owner}:project:${pid}:task:${data.id}`
         await KV.put(key, JSON.stringify(data))
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
       }
-      return new Response(JSON.stringify({ ok: false, reason: 'KV not bound or invalid payload' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+
+      return new Response(JSON.stringify({ ok: false, reason: 'Invalid payload' }), { status: 400, headers: { 'Content-Type': 'application/json' } })
     } catch (e) {
       return new Response(JSON.stringify({ error: String(e) }), { status: 500, headers: { 'Content-Type': 'application/json' } })
     }
@@ -201,12 +420,26 @@ export default async function handler(req) {
           body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
         }
       } catch (err) {}
+
       const { projectId, id } = body
       if (!projectId || !id) {
         return new Response(JSON.stringify({ error: 'Missing projectId or id' }), { status: 400, headers: { 'Content-Type': 'application/json' } })
       }
+
+      const metaVal = await KV.get(`project-meta:${projectId}`)
+      if (!metaVal) {
+        return new Response(JSON.stringify({ error: 'Project not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } })
+      }
+      const meta = JSON.parse(metaVal)
+      const requesterRole = meta.owner === requesterEmail ? 'owner' : (meta.collaborators?.[requesterEmail] || null)
+
+      // Only owner and admin can delete tasks
+      if (requesterRole !== 'owner' && requesterRole !== 'admin') {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { 'Content-Type': 'application/json' } })
+      }
+
       if (KV && KV.delete) {
-        const key = `${PREFIX}${projectId}:task:${id}`
+        const key = `${meta.owner}:project:${projectId}:task:${id}`
         await KV.delete(key)
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
       }

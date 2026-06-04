@@ -2,6 +2,49 @@
 // will write objects under key: <owner>:<projectId>:<taskId>:<filename>
 
 export default async function handler(req) {
+  let KV = globalThis?.CLOUDFLARE_KV || globalThis?.opentask || process.env.CLOUDFLARE_KV
+  let R2 = globalThis?.CLOUDFLARE_R2 || globalThis?.opentask || null
+
+  // Local development fallback to in-memory KV store if binding is missing
+  if (!KV) {
+    globalThis.__localMockStore = globalThis.__localMockStore || {}
+    KV = {
+      get: async (key) => globalThis.__localMockStore[key] || null,
+      put: async (key, val) => { globalThis.__localMockStore[key] = String(val) },
+      delete: async (key) => { delete globalThis.__localMockStore[key] },
+      list: async (options) => {
+        const prefix = options?.prefix || ''
+        const keys = Object.keys(globalThis.__localMockStore)
+          .filter(k => k.startsWith(prefix))
+          .map(k => ({ name: k }))
+        return { keys }
+      }
+    }
+  }
+
+  // Local development fallback to in-memory R2 store if binding is missing
+  if (!R2) {
+    globalThis.__localMockR2 = globalThis.__localMockR2 || {}
+    R2 = {
+      get: async (key) => {
+        const item = globalThis.__localMockR2[key]
+        if (!item) return null
+        return {
+          arrayBuffer: async () => item.buffer,
+          writeHttpMetadata: (headers) => {
+            headers.set('Content-Type', item.contentType || 'application/octet-stream')
+          }
+        }
+      },
+      put: async (key, buffer, options) => {
+        globalThis.__localMockR2[key] = {
+          buffer: buffer,
+          contentType: options?.customMetadata?.contentType || 'application/octet-stream'
+        }
+      }
+    }
+  }
+
   // Edge-compatible base64url decode
   function base64UrlDecodeToJson(payload) {
     try {
@@ -67,10 +110,13 @@ export default async function handler(req) {
     return null
   }
 
-  // Use R2 binding name CLOUDFLARE_R2 (or fallbacks)
-  const R2 = globalThis?.CLOUDFLARE_R2 || globalThis?.opentask || null
   if (req.method !== 'POST') {
     return new Response('Method Not Allowed', { status: 405, headers: { 'Allow': 'POST' } })
+  }
+
+  const requesterEmail = ownerFromReq(req)
+  if (!requesterEmail) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
   }
 
   try {
@@ -83,21 +129,36 @@ export default async function handler(req) {
       }
     } catch (e) {}
 
-    const {projectId, taskId, filename, contentBase64} = body
+    const { projectId, taskId, filename, contentBase64 } = body
     if (!projectId || !filename || !contentBase64) {
-      return new Response(JSON.stringify({error:'missing fields'}), { status: 400, headers: { 'Content-Type': 'application/json' } })
+      return new Response(JSON.stringify({ error: 'missing fields' }), { status: 400, headers: { 'Content-Type': 'application/json' } })
     }
     if (!R2 || !R2.put) {
-      return new Response(JSON.stringify({error:'R2 not bound'}), { status: 500, headers: { 'Content-Type': 'application/json' } })
+      return new Response(JSON.stringify({ error: 'R2 not bound' }), { status: 500, headers: { 'Content-Type': 'application/json' } })
     }
 
-    const owner = ownerFromReq(req)
-    const key = `${owner || 'public'}:${projectId}:${taskId || 'unassigned'}:${filename}`
+    // Resolve owner & permissions from KV project-meta
+    let projectOwner = requesterEmail
+    if (KV && KV.get) {
+      const metaVal = await KV.get(`project-meta:${projectId}`)
+      if (metaVal) {
+        const meta = JSON.parse(metaVal)
+        projectOwner = meta.owner
+
+        // Check if requester has write access
+        const role = meta.owner === requesterEmail ? 'owner' : (meta.collaborators?.[requesterEmail] || null)
+        if (!role || role === 'viewer') {
+          return new Response(JSON.stringify({ error: 'Forbidden: View-only access' }), { status: 403, headers: { 'Content-Type': 'application/json' } })
+        }
+      }
+    }
+
+    const key = `${projectOwner}:${projectId}:${taskId || 'unassigned'}:${filename}`
     const buffer = Buffer.from(contentBase64, 'base64')
     await R2.put(key, buffer)
-    return new Response(JSON.stringify({ok:true, key}), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    return new Response(JSON.stringify({ ok: true, key }), { status: 200, headers: { 'Content-Type': 'application/json' } })
   } catch (e) {
-    return new Response(JSON.stringify({error: String(e)}), { status: 500, headers: { 'Content-Type': 'application/json' } })
+    return new Response(JSON.stringify({ error: String(e) }), { status: 500, headers: { 'Content-Type': 'application/json' } })
   }
 }
 
