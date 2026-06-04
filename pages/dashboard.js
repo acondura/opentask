@@ -15,6 +15,22 @@ function uid() {
   });
 }
 
+function renderMarkdown(text) {
+  if (!text) return '';
+  let html = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/__(.*?)__/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  html = html.replace(/_(.*?)_/g, '<em>$1</em>');
+  html = html.replace(/`(.*?)`/g, '<code class="bg-zinc-950 px-1.5 py-0.5 rounded text-indigo-300 font-mono text-xs">$1</code>');
+  html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-indigo-400 hover:underline hover:text-indigo-300">$1</a>');
+  html = html.replace(/\n/g, '<br />');
+  return html;
+}
+
 function saveState(state, email) { try { localStorage.setItem(getStorageKey(email), JSON.stringify(state)) } catch (e) { } }
 function loadState(email) { try { return JSON.parse(localStorage.getItem(getStorageKey(email))) || null } catch (e) { return null } }
 
@@ -73,6 +89,7 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
   const [dueDate, setDueDate] = useState(task.dueDate || '')
   const [uploading, setUploading] = useState(false)
   const [saveStatus, setSaveStatus] = useState('')
+  const [isEditingDesc, setIsEditingDesc] = useState(false)
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -82,6 +99,7 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
     setDifficulty(task.difficulty || 'medium')
     setDueDate(task.dueDate || '')
     setSaveStatus('')
+    setIsEditingDesc(false)
   }, [task.id])
 
   const triggerSave = (updatedFields) => {
@@ -166,8 +184,8 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1">
+      <div className="grid grid-cols-2 gap-4 divide-x divide-zinc-700/80">
+        <div className="space-y-1 pr-2">
           <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Priority</label>
           <div className="flex gap-1.5">
             {['low', 'medium', 'high'].map(p => {
@@ -190,7 +208,7 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
           </div>
         </div>
 
-        <div className="space-y-1">
+        <div className="space-y-1 pl-4">
           <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Difficulty</label>
           <div className="flex gap-1.5">
             {['low', 'medium', 'hard'].map(d => {
@@ -212,28 +230,48 @@ function TaskDetails({ task, projectId, onSave, onDelete, email }) {
             })}
           </div>
         </div>
+      </div>
 
-        <div className="space-y-1 col-span-2">
-          <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Due Date</label>
-          <input
-            type="date"
-            value={dueDate}
-            onChange={(e) => { setDueDate(e.target.value); triggerSave({ dueDate: e.target.value }); }}
-            className="w-full text-sm bg-zinc-700/50 border border-zinc-600/80 rounded-xl px-3 py-1.5 text-white focus:outline-none focus:border-indigo-500 transition"
-          />
-        </div>
+      <div className="space-y-1">
+        <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Due Date</label>
+        <input
+          type="date"
+          value={dueDate}
+          onChange={(e) => { setDueDate(e.target.value); triggerSave({ dueDate: e.target.value }); }}
+          className="w-full text-sm bg-zinc-700/50 border border-zinc-600/80 rounded-xl px-3 py-1.5 text-white focus:outline-none focus:border-indigo-500 transition"
+        />
       </div>
 
       <div className="space-y-1">
         <label className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Description</label>
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          onBlur={() => triggerSave({ description })}
-          rows={4}
-          className="w-full text-sm bg-zinc-700/50 border border-zinc-600/80 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500 transition resize-none"
-          placeholder="Add details, updates, or notes..."
-        />
+        {isEditingDesc ? (
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            onBlur={() => {
+              setIsEditingDesc(false)
+              triggerSave({ description })
+            }}
+            autoFocus
+            rows={5}
+            className="w-full text-sm bg-zinc-950 border border-zinc-700/80 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500 transition resize-none font-mono"
+            placeholder="Add details, updates, or notes (Markdown supported)..."
+          />
+        ) : (
+          <div
+            onClick={() => setIsEditingDesc(true)}
+            className="w-full min-h-[100px] text-sm bg-zinc-950/40 border border-zinc-800/80 hover:border-zinc-700/80 rounded-xl px-3 py-2 text-zinc-300 cursor-pointer transition overflow-auto"
+          >
+            {description ? (
+              <div 
+                className="prose prose-invert max-w-none text-zinc-300 leading-relaxed space-y-1 text-xs"
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(description) }}
+              />
+            ) : (
+              <span className="text-zinc-500 italic text-xs">Add details, updates, or notes (Markdown supported)... Click to edit.</span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -356,6 +394,60 @@ export default function Dashboard({ userEmail }) {
   
   const dragItem = useRef(null)
   const dragOverItem = useRef(null)
+
+  // Filters State
+  const [filterText, setFilterText] = useState('')
+  const [filterPriorities, setFilterPriorities] = useState([])
+  const [filterDifficulties, setFilterDifficulties] = useState([])
+  const [filterDueDate, setFilterDueDate] = useState('')
+  const [filterAttachments, setFilterAttachments] = useState('all')
+
+  function filterTaskTree(tasks) {
+    if (!filterText && filterPriorities.length === 0 && filterDifficulties.length === 0 && !filterDueDate && filterAttachments === 'all') {
+      return tasks
+    }
+
+    return tasks.map(t => {
+      const filteredChildren = t.children ? filterTaskTree(t.children) : []
+      const hasMatchingChildren = filteredChildren.length > 0
+
+      const matchText = !filterText || 
+        (t.name && t.name.toLowerCase().includes(filterText.toLowerCase())) ||
+        (t.description && t.description.toLowerCase().includes(filterText.toLowerCase()))
+
+      const matchPriority = filterPriorities.length === 0 || 
+        filterPriorities.includes(t.priority || 'medium')
+
+      const matchDifficulty = filterDifficulties.length === 0 || 
+        filterDifficulties.includes(t.difficulty || 'medium')
+
+      const matchDueDate = !filterDueDate || (t.dueDate === filterDueDate)
+
+      let matchAttachments = true
+      if (filterAttachments === 'has_attachments') {
+        matchAttachments = t.attachments && t.attachments.length > 0
+      } else if (filterAttachments && filterAttachments.startsWith('file:')) {
+        const query = filterAttachments.substring(5).toLowerCase()
+        matchAttachments = t.attachments && t.attachments.some(att => 
+          att.filename.toLowerCase().includes(query)
+        )
+      } else if (filterAttachments && filterAttachments !== 'all') {
+        matchAttachments = t.attachments && t.attachments.some(att => 
+          att.filename.toLowerCase().includes(filterAttachments.toLowerCase())
+        )
+      }
+
+      const matchesCurrent = matchText && matchPriority && matchDifficulty && matchDueDate && matchAttachments
+
+      if (matchesCurrent || hasMatchingChildren) {
+        return {
+          ...t,
+          children: filteredChildren
+        }
+      }
+      return null
+    }).filter(Boolean)
+  }
 
   // Fetch initial state
   useEffect(() => {
@@ -1091,13 +1183,190 @@ export default function Dashboard({ userEmail }) {
                       <span className="text-xs text-zinc-400 font-medium">Drag to reorder hierarchy</span>
                     </div>
 
+                    {/* Advanced Filter Bar */}
+                    <div className="bg-zinc-800/30 border border-zinc-700/80 p-4 rounded-xl space-y-3">
+                      <div className="flex flex-wrap items-center gap-3">
+                        {/* Search text (Title/Description) */}
+                        <div className="flex-1 min-w-[200px] relative">
+                          <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-500">
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                          </span>
+                          <input
+                            type="text"
+                            value={filterText}
+                            onChange={(e) => setFilterText(e.target.value)}
+                            className="w-full text-xs bg-zinc-950 border border-zinc-700/80 rounded-lg pl-9 pr-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition"
+                            placeholder="Search tasks by title or description..."
+                          />
+                        </div>
+
+                        {/* Due Date Filter */}
+                        <div className="flex items-center gap-1.5 min-w-[150px]">
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Due:</span>
+                          <input
+                            type="date"
+                            value={filterDueDate}
+                            onChange={(e) => setFilterDueDate(e.target.value)}
+                            className="text-xs bg-zinc-950 border border-zinc-700/80 rounded-lg px-2 py-1.5 text-white focus:outline-none focus:border-indigo-500 transition"
+                          />
+                          {filterDueDate && (
+                            <button
+                              onClick={() => setFilterDueDate('')}
+                              className="text-[10px] text-rose-400 hover:text-rose-300 font-semibold"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-zinc-700/50">
+                        <div className="flex flex-wrap items-center gap-6">
+                          {/* Priority Multi-select */}
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Priority:</span>
+                            <div className="flex gap-1 bg-zinc-950 p-0.5 rounded-lg border border-zinc-700/80">
+                              {['low', 'medium', 'high'].map(p => {
+                                const active = filterPriorities.includes(p)
+                                const toggle = () => {
+                                  setFilterPriorities(prev =>
+                                    prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
+                                  )
+                                }
+                                const colors = {
+                                  low: active ? 'bg-emerald-500/20 text-emerald-400' : 'hover:bg-zinc-800 text-zinc-400',
+                                  medium: active ? 'bg-amber-500/20 text-amber-400' : 'hover:bg-zinc-800 text-zinc-400',
+                                  high: active ? 'bg-rose-500/20 text-rose-400' : 'hover:bg-zinc-800 text-zinc-400'
+                                }
+                                return (
+                                  <button
+                                    key={p}
+                                    onClick={toggle}
+                                    className={`text-[10px] font-semibold px-2 py-1 rounded-md capitalize transition ${colors[p]}`}
+                                  >
+                                    {p}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Difficulty Multi-select */}
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Difficulty:</span>
+                            <div className="flex gap-1 bg-zinc-950 p-0.5 rounded-lg border border-zinc-700/80">
+                              {['low', 'medium', 'hard'].map(d => {
+                                const active = filterDifficulties.includes(d)
+                                const toggle = () => {
+                                  setFilterDifficulties(prev =>
+                                    prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]
+                                  )
+                                }
+                                const colors = {
+                                  low: active ? 'bg-emerald-500/20 text-emerald-400' : 'hover:bg-zinc-800 text-zinc-400',
+                                  medium: active ? 'bg-amber-500/20 text-amber-400' : 'hover:bg-zinc-800 text-zinc-400',
+                                  hard: active ? 'bg-rose-500/20 text-rose-400' : 'hover:bg-zinc-800 text-zinc-400'
+                                }
+                                return (
+                                  <button
+                                    key={d}
+                                    onClick={toggle}
+                                    className={`text-[10px] font-semibold px-2 py-1 rounded-md capitalize transition ${colors[d]}`}
+                                  >
+                                    {d}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Attachments Filter */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Files:</span>
+                          <select
+                            value={filterAttachments.startsWith('file:') ? 'has_attachments' : filterAttachments}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              if (val === 'all') setFilterAttachments('all')
+                              else setFilterAttachments('has_attachments')
+                            }}
+                            className="text-xs bg-zinc-950 border border-zinc-700/80 rounded-lg px-2 py-1.5 text-zinc-300 focus:outline-none focus:border-indigo-500 transition"
+                          >
+                            <option value="all">All Tasks</option>
+                            <option value="has_attachments">Has Attachments</option>
+                          </select>
+                          
+                          {/* Text search in filenames (conditional on selection) */}
+                          {(filterAttachments === 'has_attachments' || filterAttachments.startsWith('file:')) && (
+                            <input
+                              type="text"
+                              value={filterAttachments.startsWith('file:') ? filterAttachments.substring(5) : ''}
+                              onChange={(e) => {
+                                const val = e.target.value
+                                setFilterAttachments(val ? `file:${val}` : 'has_attachments')
+                              }}
+                              className="text-xs bg-zinc-950 border border-zinc-700/80 rounded-lg px-2 py-1 text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition w-32"
+                              placeholder="Filename query..."
+                            />
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Clear Filters Indicator */}
+                      {(filterText || filterPriorities.length > 0 || filterDifficulties.length > 0 || filterDueDate || filterAttachments !== 'all') && (
+                        <div className="flex items-center justify-between pt-2 border-t border-zinc-700/20 text-[10px] text-zinc-400">
+                          <span>Active filters restricting list.</span>
+                          <button
+                            onClick={() => {
+                              setFilterText('')
+                              setFilterPriorities([])
+                              setFilterDifficulties([])
+                              setFilterDueDate('')
+                              setFilterAttachments('all')
+                            }}
+                            className="text-indigo-400 hover:text-indigo-300 font-semibold"
+                          >
+                            Clear All
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
                     <div
                       onDragOver={(e) => onDragOver(e, currentProject.id, null)}
                       onDrop={(e) => onDrop(e, currentProject.id, null)}
                       className="min-h-[300px] rounded-none transition"
                     >
                       {currentProject.tasks && currentProject.tasks.length > 0 ? (
-                        renderTasks(currentProject.id, currentProject.tasks)
+                        (() => {
+                          const filtered = filterTaskTree(currentProject.tasks)
+                          if (filtered.length === 0) {
+                            return (
+                              <div className="text-center py-16 bg-zinc-800/10 border border-dashed border-zinc-700/50 rounded-2xl">
+                                <svg className="w-10 h-10 text-zinc-600 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                                </svg>
+                                <p className="text-xs font-semibold text-zinc-300">No tasks match the active filters</p>
+                                <button
+                                  onClick={() => {
+                                    setFilterText('')
+                                    setFilterPriorities([])
+                                    setFilterDifficulties([])
+                                    setFilterDueDate('')
+                                    setFilterAttachments('all')
+                                  }}
+                                  className="mt-3 text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold border border-indigo-500/20 bg-indigo-500/5 px-2.5 py-1 rounded-lg transition"
+                                >
+                                  Clear Filters
+                                </button>
+                              </div>
+                            )
+                          }
+                          return renderTasks(currentProject.id, filtered)
+                        })()
                       ) : (
                         <div className="text-center py-16 bg-zinc-800/20 border border-dashed border-zinc-700 rounded-2xl">
                           <svg className="w-12 h-12 text-zinc-600 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
