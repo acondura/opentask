@@ -779,7 +779,8 @@ export default function Dashboard({ userEmail }) {
       difficulty: 'low',
       dueDate: '',
       attachments: [],
-      children: []
+      children: [],
+      parentId: parentId || null
     }
 
     setProjects(prev => {
@@ -836,6 +837,17 @@ export default function Dashboard({ userEmail }) {
       if (f) return f
     }
     return null
+  }
+
+  function findParentTaskId(tasks, targetId, currentParentId = null) {
+    for (const t of tasks) {
+      if (t.id === targetId) return currentParentId
+      if (t.children && t.children.length) {
+        const found = findParentTaskId(t.children, targetId, t.id)
+        if (found !== undefined) return found
+      }
+    }
+    return undefined
   }
 
   function removeTask(projectId, taskId) {
@@ -981,7 +993,13 @@ export default function Dashboard({ userEmail }) {
       saveState(cp, activeEmail)
       
       const updated = removed
-      updated.parentId = dest.overTaskId || null
+      let newParentId = null
+      if (dest.position === 'inside') {
+        newParentId = dest.overTaskId
+      } else if (dest.overTaskId) {
+        newParentId = findParentTaskId(proj.tasks, dest.overTaskId) || null
+      }
+      updated.parentId = newParentId
       saveTaskToKV(updated, proj.id, activeEmail)
       return cp
     })
